@@ -31,9 +31,28 @@ export interface TodayAttendanceResponse {
   activeSession?: WorkSessionDto;
 }
 
+export interface WorkSessionsResponse {
+  items: WorkSessionDto[];
+}
+
 export interface ClockCommandResponse {
   serverTime: ISOInstant;
   session: WorkSessionDto;
+}
+
+export interface DailyAttendanceOverview {
+  workDate: ISODate;
+  state: AttendanceState;
+  sessions: WorkSessionDto[];
+  workedMinutes: number;
+  breakMinutes: number;
+}
+
+export interface MonthlyAttendanceOverview {
+  month: string;
+  days: DailyAttendanceOverview[];
+  workedMinutes: number;
+  breakMinutes: number;
 }
 
 export interface CorrectionValues {

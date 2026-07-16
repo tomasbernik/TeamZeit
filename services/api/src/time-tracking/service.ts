@@ -1,4 +1,12 @@
-import type { AttendanceState, ClockCommandResponse, CorrectionRequestDto, ISODate, TodayAttendanceResponse, UUID } from "@teamzeit/contracts";
+import type {
+  AttendanceState,
+  ClockCommandResponse,
+  CorrectionRequestDto,
+  ISODate,
+  TodayAttendanceResponse,
+  UUID,
+  WorkSessionsResponse,
+} from "@teamzeit/contracts";
 
 import {
   calculateBreakMinutes,
@@ -171,6 +179,16 @@ export class TimeTrackingService {
       workedMinutes: days.reduce((total, day) => total + day.workedMinutes, 0),
       breakMinutes: days.reduce((total, day) => total + day.breakMinutes, 0),
     };
+  }
+
+  public async listOwnSessions(
+    context: AttendanceMembershipContext,
+    from: ISODate,
+    to: ISODate,
+  ): Promise<WorkSessionsResponse> {
+    const now = toIsoInstant(this.clock.now());
+    const sessions = await this.repository.listSessions(context.organizationId, context.membershipId, from, to);
+    return { items: sessions.map((session) => toWorkSessionDto(session, now)) };
   }
 
   public async createCorrection(

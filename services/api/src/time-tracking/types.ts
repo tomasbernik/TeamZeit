@@ -1,11 +1,12 @@
 import type {
-  AttendanceState,
   ClockCommandResponse,
   CorrectionRequestDto,
   CorrectionValues,
+  DailyAttendanceOverview,
   ISODate,
   ISOInstant,
   IanaTimeZone,
+  MonthlyAttendanceOverview,
   ReviewCorrectionRequest,
   UUID,
   WorkBreakDto,
@@ -101,20 +102,7 @@ export interface IdGenerator {
   uuid(): UUID;
 }
 
-export interface DailyAttendanceOverview {
-  workDate: ISODate;
-  state: AttendanceState;
-  sessions: WorkSessionDto[];
-  workedMinutes: number;
-  breakMinutes: number;
-}
-
-export interface MonthlyAttendanceOverview {
-  month: string;
-  days: DailyAttendanceOverview[];
-  workedMinutes: number;
-  breakMinutes: number;
-}
+export type { DailyAttendanceOverview, MonthlyAttendanceOverview };
 
 export interface CreateCorrectionCommand {
   sessionId: UUID;
