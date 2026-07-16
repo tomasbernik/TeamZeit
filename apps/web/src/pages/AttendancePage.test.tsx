@@ -13,6 +13,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "../App";
+import { webConfig } from "../config/env";
 
 const session = { access_token: "valid-token" } as Session;
 const secondSession = { access_token: "second-token" } as Session;
@@ -122,6 +123,14 @@ function attendanceFetch(state: TodayAttendanceResponse["state"] = "working") {
   });
 }
 
+function configuredApiUrl(path: string): URL {
+  return new URL(`${webConfig.apiUrl.replace(/\/$/, "")}${path}`, window.location.origin);
+}
+
+function requestUrl(input: RequestInfo | URL): URL {
+  return new URL(String(input), window.location.origin);
+}
+
 async function renderAttendance(
   options: {
     role?: MembershipRole;
@@ -163,14 +172,25 @@ afterEach(() => {
 describe("AttendancePage", () => {
   it("loads attendance over the authenticated API context", async () => {
     const fetcher = await renderAttendance();
+    const todayCall = fetcher.mock.calls.find(([input]) => requestUrl(input).pathname.endsWith("/attendance/today"));
+    const expectedUrl = configuredApiUrl("/attendance/today");
 
-    expect(fetcher).toHaveBeenCalledWith(
-      "/api/v1/attendance/today",
+    if (!todayCall) {
+      throw new Error("Expected attendance/today request.");
+    }
+
+    const [input, init] = todayCall;
+    const url = requestUrl(input);
+
+    expect(url.href).toBe(expectedUrl.href);
+    expect(url.pathname).toBe(expectedUrl.pathname);
+    expect(url.pathname).toMatch(/\/attendance\/today$/);
+    expect(init).toEqual(
       expect.objectContaining({
-        headers: {
+        headers: expect.objectContaining({
           Authorization: "Bearer valid-token",
           "X-Organization-Id": "employee-org",
-        },
+        }),
       }),
     );
   });
