@@ -196,49 +196,51 @@ export class TimeTrackingService {
     requestId: UUID,
     command: CreateCorrectionCommand,
   ): Promise<CorrectionRequestDto> {
-    const existingResult = await this.repository.findIdempotentResult(context.organizationId, context.membershipId, requestId);
-    if (existingResult) {
-      return this.expectCorrectionResult(existingResult);
-    }
+    return this.withRepositoryTransaction(async () => {
+      const existingResult = await this.repository.findIdempotentResult(context.organizationId, context.membershipId, requestId);
+      if (existingResult) {
+        return this.expectCorrectionResult(existingResult);
+      }
 
-    validateCorrectionValues(command.proposed);
-    await this.periodGuard.assertPeriodOpen({
-      organizationId: context.organizationId,
-      membershipId: context.membershipId,
-      workDate: command.proposed.workDate,
-      operation: "correction",
+      validateCorrectionValues(command.proposed);
+      await this.periodGuard.assertPeriodOpen({
+        organizationId: context.organizationId,
+        membershipId: context.membershipId,
+        workDate: command.proposed.workDate,
+        operation: "correction",
+      });
+
+      const session = await this.repository.findSession(context.organizationId, context.membershipId, command.sessionId);
+      if (!session) {
+        throw validationError("Session was not found for the current membership.", "sessionId");
+      }
+
+      if (session.version !== command.expectedVersion) {
+        throw conflict("Session version is stale.", "expectedVersion");
+      }
+
+      const original = correctionValuesFromSession(session);
+      const now = toIsoInstant(this.clock.now());
+      const correction: CorrectionRequestDto & { expectedVersion: number } = {
+        id: this.ids.uuid(),
+        organizationId: context.organizationId,
+        requesterMembershipId: context.membershipId,
+        sessionId: session.id,
+        original,
+        proposed: command.proposed,
+        reason: command.reason,
+        status: "pending",
+        createdAt: now,
+        expectedVersion: command.expectedVersion,
+      };
+
+      await this.repository.insertCorrection(correction);
+      await this.repository.saveIdempotentResult(context.organizationId, context.membershipId, requestId, {
+        kind: "correction",
+        response: correction,
+      });
+      return correction;
     });
-
-    const session = await this.repository.findSession(context.organizationId, context.membershipId, command.sessionId);
-    if (!session) {
-      throw validationError("Session was not found for the current membership.", "sessionId");
-    }
-
-    if (session.version !== command.expectedVersion) {
-      throw conflict("Session version is stale.", "expectedVersion");
-    }
-
-    const original = correctionValuesFromSession(session);
-    const now = toIsoInstant(this.clock.now());
-    const correction: CorrectionRequestDto & { expectedVersion: number } = {
-      id: this.ids.uuid(),
-      organizationId: context.organizationId,
-      requesterMembershipId: context.membershipId,
-      sessionId: session.id,
-      original,
-      proposed: command.proposed,
-      reason: command.reason,
-      status: "pending",
-      createdAt: now,
-      expectedVersion: command.expectedVersion,
-    };
-
-    await this.repository.insertCorrection(correction);
-    await this.repository.saveIdempotentResult(context.organizationId, context.membershipId, requestId, {
-      kind: "correction",
-      response: correction,
-    });
-    return correction;
   }
 
   public async reviewCorrection(
@@ -247,90 +249,97 @@ export class TimeTrackingService {
     requestId: UUID,
     command: ReviewCorrectionCommand,
   ): Promise<CorrectionRequestDto> {
-    const existingResult = await this.repository.findIdempotentResult(context.organizationId, context.membershipId, requestId);
-    if (existingResult) {
-      return this.expectCorrectionResult(existingResult);
-    }
-
-    if (!context.canReviewCorrections) {
-      throw conflict("Reviewer is not authorised for correction review.");
-    }
-
-    const correction = await this.repository.findCorrection(context.organizationId, correctionId);
-    if (!correction) {
-      throw validationError("Correction was not found.", "correctionId");
-    }
-
-    if (correction.requesterMembershipId === context.membershipId) {
-      throw conflict("A requester cannot review their own correction.");
-    }
-
-    if (correction.status !== "pending") {
-      throw conflict("Correction has already been reviewed.");
-    }
-
-    await this.periodGuard.assertPeriodOpen({
-      organizationId: context.organizationId,
-      membershipId: correction.requesterMembershipId,
-      workDate: correction.proposed.workDate,
-      operation: "correction",
-    });
-
-    const now = toIsoInstant(this.clock.now());
-    const reviewed: CorrectionRequestDto & { expectedVersion: number } = {
-      ...correction,
-      status: command.decision === "approve" ? "approved" : "rejected",
-      reviewedByMembershipId: context.membershipId,
-      ...(command.comment ? { reviewComment: command.comment } : {}),
-      reviewedAt: now,
-    };
-
-    if (command.decision === "approve") {
-      const session = await this.repository.findSession(
-        context.organizationId,
-        correction.requesterMembershipId,
-        correction.sessionId,
-      );
-
-      if (!session) {
-        throw conflict("Session for correction no longer exists.");
+    return this.withRepositoryTransaction(async () => {
+      const existingResult = await this.repository.findIdempotentResult(context.organizationId, context.membershipId, requestId);
+      if (existingResult) {
+        return this.expectCorrectionResult(existingResult);
       }
 
-      if (session.version !== correction.expectedVersion) {
-        throw conflict("Session version is stale.");
+      if (!context.canReviewCorrections) {
+        throw conflict("Reviewer is not authorised for correction review.");
       }
 
-      await this.repository.updateSession({
-        ...session,
+      const correction = await this.repository.findCorrection(context.organizationId, correctionId);
+      if (!correction) {
+        throw validationError("Correction was not found.", "correctionId");
+      }
+
+      if (correction.requesterMembershipId === context.membershipId) {
+        throw conflict("A requester cannot review their own correction.");
+      }
+
+      if (correction.status !== "pending") {
+        throw conflict("Correction has already been reviewed.");
+      }
+
+      await this.periodGuard.assertPeriodOpen({
+        organizationId: context.organizationId,
+        membershipId: correction.requesterMembershipId,
         workDate: correction.proposed.workDate,
-        startedAt: correction.proposed.startedAt,
-        endedAt: correction.proposed.endedAt,
-        breaks: buildSyntheticCorrectionBreaks(session, correction.proposed.startedAt, correction.proposed.breakMinutes, this.ids.uuid()),
-        source: "approved_correction",
-        version: session.version + 1,
+        operation: "correction",
       });
-    }
 
-    await this.repository.updateCorrection(reviewed);
-    await this.repository.appendAuditEvent({
-      id: this.ids.uuid(),
-      organizationId: context.organizationId,
-      actorUserId: context.userId,
-      actorMembershipId: context.membershipId,
-      action: command.decision === "approve" ? "correction.approved" : "correction.rejected",
-      entityType: "correction_request",
-      entityId: correction.id,
-      occurredAt: now,
-      requestId,
-      beforeValues: correction.original,
-      afterValues: command.decision === "approve" ? correction.proposed : undefined,
-      metadata: { sessionId: correction.sessionId },
+      const now = toIsoInstant(this.clock.now());
+      const reviewed: CorrectionRequestDto & { expectedVersion: number } = {
+        ...correction,
+        status: command.decision === "approve" ? "approved" : "rejected",
+        reviewedByMembershipId: context.membershipId,
+        ...(command.comment ? { reviewComment: command.comment } : {}),
+        reviewedAt: now,
+      };
+
+      if (command.decision === "approve") {
+        const session = await this.repository.findSession(
+          context.organizationId,
+          correction.requesterMembershipId,
+          correction.sessionId,
+        );
+
+        if (!session) {
+          throw conflict("Session for correction no longer exists.");
+        }
+
+        if (session.version !== correction.expectedVersion) {
+          throw conflict("Session version is stale.");
+        }
+
+        await this.repository.updateSession({
+          ...session,
+          workDate: correction.proposed.workDate,
+          startedAt: correction.proposed.startedAt,
+          endedAt: correction.proposed.endedAt,
+          breaks: buildSyntheticCorrectionBreaks(
+            session,
+            correction.proposed.startedAt,
+            correction.proposed.breakMinutes,
+            this.ids.uuid(),
+          ),
+          source: "approved_correction",
+          version: session.version + 1,
+        });
+      }
+
+      await this.repository.updateCorrection(reviewed);
+      await this.repository.appendAuditEvent({
+        id: this.ids.uuid(),
+        organizationId: context.organizationId,
+        actorUserId: context.userId,
+        actorMembershipId: context.membershipId,
+        action: command.decision === "approve" ? "correction.approved" : "correction.rejected",
+        entityType: "correction_request",
+        entityId: correction.id,
+        occurredAt: now,
+        requestId,
+        beforeValues: correction.original,
+        afterValues: command.decision === "approve" ? correction.proposed : undefined,
+        metadata: { sessionId: correction.sessionId },
+      });
+      await this.repository.saveIdempotentResult(context.organizationId, context.membershipId, requestId, {
+        kind: "correction",
+        response: reviewed,
+      });
+      return reviewed;
     });
-    await this.repository.saveIdempotentResult(context.organizationId, context.membershipId, requestId, {
-      kind: "correction",
-      response: reviewed,
-    });
-    return reviewed;
   }
 
   private async runClockCommand(
@@ -339,28 +348,37 @@ export class TimeTrackingService {
     eventType: ClockEventType,
     mutate: (occurredAt: string) => Promise<WorkSessionRecord>,
   ): Promise<ClockCommandResponse> {
-    const existingResult = await this.repository.findIdempotentResult(context.organizationId, context.membershipId, requestId);
-    if (existingResult) {
-      return this.expectClockResult(existingResult);
-    }
+    return this.withRepositoryTransaction(async () => {
+      const existingResult = await this.repository.findIdempotentResult(context.organizationId, context.membershipId, requestId);
+      if (existingResult) {
+        return this.expectClockResult(existingResult);
+      }
 
-    const serverTime = toIsoInstant(this.clock.now());
-    const session = await mutate(serverTime);
+      const serverTime = toIsoInstant(this.clock.now());
+      const session = await mutate(serverTime);
 
-    await this.repository.appendClockEvent({
-      id: this.ids.uuid(),
-      organizationId: context.organizationId,
-      workSessionId: session.id,
-      membershipId: context.membershipId,
-      eventType,
-      occurredAt: serverTime,
-      recordedAt: serverTime,
-      requestId,
+      await this.repository.appendClockEvent({
+        id: this.ids.uuid(),
+        organizationId: context.organizationId,
+        workSessionId: session.id,
+        membershipId: context.membershipId,
+        eventType,
+        occurredAt: serverTime,
+        recordedAt: serverTime,
+        requestId,
+      });
+
+      const response = { serverTime, session: toWorkSessionDto(session, serverTime) };
+      await this.repository.saveIdempotentResult(context.organizationId, context.membershipId, requestId, {
+        kind: "clock",
+        response,
+      });
+      return response;
     });
+  }
 
-    const response = { serverTime, session: toWorkSessionDto(session, serverTime) };
-    await this.repository.saveIdempotentResult(context.organizationId, context.membershipId, requestId, { kind: "clock", response });
-    return response;
+  private async withRepositoryTransaction<T>(operation: () => Promise<T>): Promise<T> {
+    return this.repository.transaction ? this.repository.transaction(operation) : operation();
   }
 
   private async requireOpenSession(context: AttendanceMembershipContext): Promise<WorkSessionRecord> {

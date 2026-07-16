@@ -4,7 +4,9 @@ import { randomUUID } from "node:crypto";
 
 import type { ApiConfig } from "./config/env.js";
 import { IdentityError, resolveCurrentContext, type IdentityContextDependencies } from "./identity/context.js";
+import { createSupabaseServiceClient } from "./lib/supabase.js";
 import { InMemoryTimeTrackingRepository } from "./time-tracking/memory-repository.js";
+import { PostgresPeriodGuard, PostgresTimeTrackingRepository } from "./time-tracking/postgres-repository.js";
 import { registerTimeTrackingRoutes, type TimeTrackingRouteDependencies } from "./time-tracking/routes.js";
 import { TimeTrackingService } from "./time-tracking/service.js";
 import type { PeriodGuard } from "./time-tracking/types.js";
@@ -66,7 +68,7 @@ export function buildApp(
     }
   });
 
-  registerTimeTrackingRoutes(app, config, dependencies.timeTracking ?? createDefaultTimeTrackingDependencies(dependencies.identity));
+  registerTimeTrackingRoutes(app, config, dependencies.timeTracking ?? createDefaultTimeTrackingDependencies(config, dependencies.identity));
 
   return app;
 }
@@ -79,11 +81,43 @@ function normalizeDependencies(dependencies: ApiDependencies | IdentityContextDe
   return { identity: dependencies as IdentityContextDependencies };
 }
 
-function createDefaultTimeTrackingDependencies(identity?: IdentityContextDependencies): TimeTrackingRouteDependencies {
+function createDefaultTimeTrackingDependencies(
+  config: ApiConfig,
+  identity?: IdentityContextDependencies,
+): TimeTrackingRouteDependencies {
+  const productionDependencies = createProductionTimeTrackingDependencies(config, identity);
+  if (productionDependencies) {
+    return productionDependencies;
+  }
+
   return {
     service: new TimeTrackingService({
       repository: new InMemoryTimeTrackingRepository(),
       periodGuard: openPeriodGuard,
+      clock: { now: () => new Date() },
+      ids: { uuid: () => randomUUID() },
+    }),
+    ...(identity ? { identity } : {}),
+  };
+}
+
+function createProductionTimeTrackingDependencies(
+  config: ApiConfig,
+  identity?: IdentityContextDependencies,
+): TimeTrackingRouteDependencies | undefined {
+  if (config.timeTrackingRepository !== "postgres") {
+    return undefined;
+  }
+
+  const client = createSupabaseServiceClient(config);
+  if (!client) {
+    throw new Error("TIME_TRACKING_REPOSITORY=postgres requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
+  }
+
+  return {
+    service: new TimeTrackingService({
+      repository: new PostgresTimeTrackingRepository(client),
+      periodGuard: new PostgresPeriodGuard(client),
       clock: { now: () => new Date() },
       ids: { uuid: () => randomUUID() },
     }),

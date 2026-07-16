@@ -18,6 +18,10 @@ export class InMemoryTimeTrackingRepository implements TimeTrackingRepository {
   public readonly auditEvents: AuditEventRecord[] = [];
   private readonly idempotency = new Map<string, StoredCommandResult>();
 
+  public async transaction<T>(operation: () => Promise<T>): Promise<T> {
+    return operation();
+  }
+
   public async findIdempotentResult(
     organizationId: string,
     membershipId: string,

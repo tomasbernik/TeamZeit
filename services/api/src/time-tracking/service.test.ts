@@ -18,6 +18,7 @@ const organizationId = "00000000-0000-4000-8000-000000000001";
 const membershipId = "00000000-0000-4000-8000-000000000002";
 const managerMembershipId = "00000000-0000-4000-8000-000000000003";
 const userId = "00000000-0000-4000-8000-000000000004";
+const otherMembershipId = "00000000-0000-4000-8000-000000000005";
 
 class QueueClock implements Clock {
   private readonly instants: Date[];
@@ -300,12 +301,12 @@ describe("time tracking domain service", () => {
       new QueueClock("2026-07-16T06:00:00.000Z", "2026-07-16T07:00:00.000Z"),
     );
     const requestId = "00000000-0000-4000-8000-000000000143";
-    const otherContext = { ...context, membershipId: managerMembershipId };
+    const otherContext = { ...context, membershipId: otherMembershipId };
 
     const first = await service.clockIn(context, requestId);
     const second = await service.clockIn(otherContext, requestId);
 
-    expect(second.session.membershipId).toBe(managerMembershipId);
+    expect(second.session.membershipId).toBe(otherMembershipId);
     expect(second.session.id).not.toBe(first.session.id);
     expect(repository.sessions.size).toBe(2);
     expect(repository.clockEvents).toHaveLength(2);

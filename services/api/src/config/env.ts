@@ -12,6 +12,8 @@ const apiEnvironmentSchema = z.object({
   WEB_ORIGIN: z.string().url().default("http://localhost:5173"),
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_ANON_KEY: z.string().min(1).optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
+  TIME_TRACKING_REPOSITORY: z.enum(["memory", "postgres"]).optional(),
 });
 
 export interface ApiConfig {
@@ -21,12 +23,17 @@ export interface ApiConfig {
   webOrigin: string;
   supabaseUrl?: string;
   supabaseAnonKey?: string;
+  supabaseServiceRoleKey?: string;
   supabaseConfigured: boolean;
+  supabaseServiceRoleConfigured: boolean;
+  timeTrackingRepository: "memory" | "postgres";
 }
 
 export function readApiConfig(source: NodeJS.ProcessEnv = process.env): ApiConfig {
   const value = apiEnvironmentSchema.parse(source);
   const supabaseConfigured = Boolean(value.SUPABASE_URL && value.SUPABASE_ANON_KEY);
+  const supabaseServiceRoleConfigured = Boolean(value.SUPABASE_URL && value.SUPABASE_SERVICE_ROLE_KEY);
+  const timeTrackingRepository = value.TIME_TRACKING_REPOSITORY ?? (value.NODE_ENV === "production" ? "postgres" : "memory");
 
   return {
     nodeEnv: value.NODE_ENV,
@@ -35,6 +42,9 @@ export function readApiConfig(source: NodeJS.ProcessEnv = process.env): ApiConfi
     webOrigin: value.WEB_ORIGIN,
     ...(value.SUPABASE_URL ? { supabaseUrl: value.SUPABASE_URL } : {}),
     ...(value.SUPABASE_ANON_KEY ? { supabaseAnonKey: value.SUPABASE_ANON_KEY } : {}),
+    ...(value.SUPABASE_SERVICE_ROLE_KEY ? { supabaseServiceRoleKey: value.SUPABASE_SERVICE_ROLE_KEY } : {}),
     supabaseConfigured,
+    supabaseServiceRoleConfigured,
+    timeTrackingRepository,
   };
 }
