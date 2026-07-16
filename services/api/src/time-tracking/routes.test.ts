@@ -383,4 +383,42 @@ describe("time tracking API routes", () => {
     expect(response.json()).toMatchObject({ error: { code: "FORBIDDEN" } });
     expect((await repository.findCorrection(organizationId, correction.id))?.status).toBe("pending");
   });
+
+  it("blocks manager correction review until scoped command enforcement exists", async () => {
+    const { app, repository } = buildHarness({ memberships: [membership({ role: "manager" })] });
+    const correction: CorrectionRecord = {
+      id: "00000000-0000-4000-8000-000000000411",
+      organizationId,
+      requesterMembershipId: otherMembershipId,
+      sessionId: "00000000-0000-4000-8000-000000000412",
+      original: {
+        workDate: "2026-07-16",
+        startedAt: "2026-07-16T06:00:00.000Z",
+        endedAt: "2026-07-16T14:00:00.000Z",
+        breakMinutes: 0,
+      },
+      proposed: {
+        workDate: "2026-07-16",
+        startedAt: "2026-07-16T06:15:00.000Z",
+        endedAt: "2026-07-16T14:00:00.000Z",
+        breakMinutes: 30,
+      },
+      reason: "Correction requested.",
+      status: "pending",
+      createdAt: "2026-07-16T15:00:00.000Z",
+      expectedVersion: 2,
+    };
+    await repository.insertCorrection(correction);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/corrections/${correction.id}/review`,
+      headers: authHeaders({ "idempotency-key": "00000000-0000-4000-8000-000000000214" }),
+      payload: { decision: "approve" },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ error: { code: "FORBIDDEN" } });
+    expect((await repository.findCorrection(organizationId, correction.id))?.status).toBe("pending");
+  });
 });

@@ -18,13 +18,26 @@ export class InMemoryTimeTrackingRepository implements TimeTrackingRepository {
   public readonly auditEvents: AuditEventRecord[] = [];
   private readonly idempotency = new Map<string, StoredCommandResult>();
 
-  public async findIdempotentResult(organizationId: string, requestId: string): Promise<StoredCommandResult | undefined> {
-    const result = this.idempotency.get(this.idempotencyKey(organizationId, requestId));
+  public async transaction<T>(operation: () => Promise<T>): Promise<T> {
+    return operation();
+  }
+
+  public async findIdempotentResult(
+    organizationId: string,
+    membershipId: string,
+    requestId: string,
+  ): Promise<StoredCommandResult | undefined> {
+    const result = this.idempotency.get(this.idempotencyKey(organizationId, membershipId, requestId));
     return result ? clone(result) : undefined;
   }
 
-  public async saveIdempotentResult(organizationId: string, requestId: string, result: StoredCommandResult): Promise<void> {
-    this.idempotency.set(this.idempotencyKey(organizationId, requestId), clone(result));
+  public async saveIdempotentResult(
+    organizationId: string,
+    membershipId: string,
+    requestId: string,
+    result: StoredCommandResult,
+  ): Promise<void> {
+    this.idempotency.set(this.idempotencyKey(organizationId, membershipId, requestId), clone(result));
   }
 
   public async findOpenSession(organizationId: string, membershipId: string): Promise<WorkSessionRecord | undefined> {
@@ -94,8 +107,7 @@ export class InMemoryTimeTrackingRepository implements TimeTrackingRepository {
     this.auditEvents.push(clone(event));
   }
 
-  private idempotencyKey(organizationId: string, requestId: string): string {
-    return `${organizationId}:${requestId}`;
+  private idempotencyKey(organizationId: string, membershipId: string, requestId: string): string {
+    return `${organizationId}:${membershipId}:${requestId}`;
   }
 }
-

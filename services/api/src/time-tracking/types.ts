@@ -71,8 +71,9 @@ export type StoredCommandResult =
   | { kind: "correction"; response: CorrectionRequestDto };
 
 export interface TimeTrackingRepository {
-  findIdempotentResult(organizationId: UUID, requestId: UUID): Promise<StoredCommandResult | undefined>;
-  saveIdempotentResult(organizationId: UUID, requestId: UUID, result: StoredCommandResult): Promise<void>;
+  transaction?<T>(operation: () => Promise<T>): Promise<T>;
+  findIdempotentResult(organizationId: UUID, membershipId: UUID, requestId: UUID): Promise<StoredCommandResult | undefined>;
+  saveIdempotentResult(organizationId: UUID, membershipId: UUID, requestId: UUID, result: StoredCommandResult): Promise<void>;
   findOpenSession(organizationId: UUID, membershipId: UUID): Promise<WorkSessionRecord | undefined>;
   findSession(organizationId: UUID, membershipId: UUID, sessionId: UUID): Promise<WorkSessionRecord | undefined>;
   listSessions(organizationId: UUID, membershipId: UUID, from: ISODate, to: ISODate): Promise<WorkSessionRecord[]>;

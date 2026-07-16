@@ -107,7 +107,7 @@ export function registerTimeTrackingRoutes(
 
   app.post("/api/v1/corrections/:correctionId/review", async (request, reply) =>
     withAttendanceContext(request, reply, config, dependencies.identity, async ({ attendance, role }) => {
-      const canReviewCorrections = role === "owner" || role === "admin" || role === "manager";
+      const canReviewCorrections = role === "owner" || role === "admin";
       if (!canReviewCorrections) {
         throw new TimeTrackingError("FORBIDDEN", "Diese Mitgliedschaft darf Korrekturen nicht prüfen.");
       }

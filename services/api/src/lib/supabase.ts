@@ -10,3 +10,11 @@ export function createSupabaseClient(config: ApiConfig, accessToken?: string): S
     ...(accessToken ? { global: { headers: { Authorization: `Bearer ${accessToken}` } } } : {}),
   });
 }
+
+export function createSupabaseServiceClient(config: ApiConfig): SupabaseClient | null {
+  if (!config.supabaseServiceRoleConfigured || !config.supabaseUrl || !config.supabaseServiceRoleKey) return null;
+
+  return createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+}
