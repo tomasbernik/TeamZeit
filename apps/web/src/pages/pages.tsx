@@ -1,3 +1,5 @@
+export { AttendancePage } from "./AttendancePage";
+
 interface PlaceholderPageProps {
   eyebrow: string;
   title: string;
@@ -20,10 +22,6 @@ function PlaceholderPage({ eyebrow, title, description }: PlaceholderPageProps) 
 
 export function TodayPage() {
   return <PlaceholderPage eyebrow="Übersicht" title="Heute" description="Dein Arbeitstag auf einen Blick." />;
-}
-
-export function AttendancePage() {
-  return <PlaceholderPage eyebrow="Arbeitszeit" title="Zeiterfassung" description="Monatsübersicht, Zeitkonto und Korrekturen." />;
 }
 
 export function AbsencesPage() {

@@ -69,6 +69,39 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .center-shell { display: grid; place-items: center; min-height: 100vh; padding: 24px; }
 .status-panel { width: min(100%, 560px); padding: 34px; border: 1px solid var(--line); border-radius: 8px; background: white; box-shadow: 0 18px 60px rgba(54,42,86,.1); }
 .status-panel h1 { font-size: clamp(30px, 6vw, 44px); }
+.page-heading { margin-bottom: 24px; }
+.attendance-page h1 { font-size: clamp(32px, 5vw, 52px); }
+.attendance-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr); gap: 18px; align-items: start; }
+.panel { min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 18px 48px rgba(54, 42, 86, .07); }
+.workday-panel { grid-row: span 2; }
+.correction-panel { grid-column: 1 / -1; }
+.panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.panel h2 { margin: 0; font-size: 22px; line-height: 1.2; }
+.panel input, .panel textarea { width: 100%; min-height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: white; }
+.panel textarea { min-height: 96px; padding: 10px 12px; resize: vertical; }
+.panel input:focus, .panel textarea:focus { outline: 3px solid rgba(101, 83, 184, .2); border-color: var(--accent); }
+.state-pill { display: inline-flex; align-items: center; min-height: 34px; padding: 0 11px; border-radius: 999px; font-size: 13px; font-weight: 800; white-space: nowrap; }
+.state-not_started { color: #5b526a; background: #f1eef7; }
+.state-working { color: #145437; background: #e4f6ed; }
+.state-on_break { color: #74530f; background: #fff3c9; }
+.state-completed { color: #334160; background: #eaf0ff; }
+.metric-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.metric-grid div { padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fbfaff; }
+.metric-grid dt { color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; }
+.metric-grid dd { margin: 6px 0 0; font-size: 24px; font-weight: 850; }
+.command-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.command-button { min-height: 54px; margin: 0; border-radius: 8px; }
+.overview-list { display: grid; gap: 10px; }
+.summary-row, .session-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fbfaff; }
+.summary-row span, .session-row small { color: var(--muted); font-size: 13px; }
+.session-row strong { font-size: 14px; }
+.compact-empty { min-height: 160px; margin-top: 0; border-radius: 8px; }
+.compact-empty p { margin-top: -42px; }
+.hint-text { margin: 12px 0 0; color: var(--muted); font-size: 13px; }
+.correction-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; align-items: end; }
+.correction-form label { display: grid; gap: 7px; color: var(--muted); font-size: 13px; font-weight: 750; }
+.correction-form label:has(textarea) { grid-column: span 2; }
+.correction-form button { align-self: end; margin: 0; }
 
 @media (max-width: 760px) {
   .app-shell { display: block; }
@@ -82,4 +115,12 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   .page-content { padding: 22px 14px 92px; }
   .page-card { min-height: 460px; padding: 28px 22px; border-radius: 22px; }
   .login-card { padding: 34px 24px; }
+  .attendance-grid { grid-template-columns: 1fr; gap: 14px; }
+  .panel { padding: 18px; }
+  .panel-header { display: grid; gap: 12px; }
+  .panel-header input { max-width: none; }
+  .workday-panel, .correction-panel { grid-row: auto; grid-column: auto; }
+  .metric-grid, .command-grid, .correction-form { grid-template-columns: 1fr; }
+  .summary-row, .session-row { grid-template-columns: 1fr; gap: 5px; }
+  .correction-form label:has(textarea) { grid-column: auto; }
 }
