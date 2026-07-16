@@ -1,0 +1,299 @@
+openapi: 3.1.0
+info:
+  title: TeamZeit API
+  version: 0.1.0
+  description: Initial contract for identity context and MVP time tracking commands.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+paths:
+  /me:
+    get:
+      operationId: getCurrentContext
+      tags: [Identity]
+      responses:
+        '200':
+          description: Authenticated user and organisation memberships.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CurrentContext' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /attendance/today:
+    get:
+      operationId: getTodayAttendance
+      tags: [TimeTracking]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: Current user's attendance state in the organisation time zone.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TodayAttendance' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /attendance/sessions:
+    get:
+      operationId: listOwnWorkSessions
+      tags: [TimeTracking]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - name: from
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Bounded list of the current user's sessions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/WorkSession' }
+  /attendance/commands/clock-in:
+    post:
+      operationId: clockIn
+      tags: [TimeTracking]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': { $ref: '#/components/responses/ClockCommand' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /attendance/commands/break-start:
+    post:
+      operationId: startBreak
+      tags: [TimeTracking]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': { $ref: '#/components/responses/ClockCommand' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /attendance/commands/break-end:
+    post:
+      operationId: endBreak
+      tags: [TimeTracking]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': { $ref: '#/components/responses/ClockCommand' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /attendance/commands/clock-out:
+    post:
+      operationId: clockOut
+      tags: [TimeTracking]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': { $ref: '#/components/responses/ClockCommand' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /corrections:
+    post:
+      operationId: createCorrection
+      tags: [Corrections]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCorrection' }
+      responses:
+        '201':
+          description: Correction submitted for review.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Correction' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /corrections/{correctionId}/review:
+    post:
+      operationId: reviewCorrection
+      tags: [Corrections]
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: correctionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approve, reject] }
+                comment: { type: string, maxLength: 1000 }
+      responses:
+        '200':
+          description: Reviewed correction.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Correction' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    OrganizationId:
+      name: X-Organization-Id
+      in: header
+      required: true
+      schema: { type: string, format: uuid }
+      description: Selects an organisation; membership is still verified server-side.
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    ClockCommand:
+      description: Result based on authoritative server time.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [serverTime, session]
+            properties:
+              serverTime: { type: string, format: date-time }
+              session: { $ref: '#/components/schemas/WorkSession' }
+    Unauthenticated:
+      description: Missing or invalid access token.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Forbidden:
+      description: Membership or capability is missing.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Conflict:
+      description: Invalid state, duplicate logical action, stale version, or closed period.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    CurrentContext:
+      type: object
+      required: [user, memberships, issuedAt]
+      properties:
+        user:
+          type: object
+          required: [id, displayName, email]
+          properties:
+            id: { type: string, format: uuid }
+            displayName: { type: string }
+            email: { type: string, format: email }
+        memberships:
+          type: array
+          items:
+            type: object
+            required: [id, organization, role, status]
+            properties:
+              id: { type: string, format: uuid }
+              organization:
+                type: object
+                required: [id, name, slug, timeZone]
+                properties:
+                  id: { type: string, format: uuid }
+                  name: { type: string }
+                  slug: { type: string }
+                  timeZone: { type: string }
+                  logoUrl: { type: string, format: uri }
+              role: { type: string, enum: [owner, admin, manager, employee, auditor] }
+              status: { type: string, enum: [invited, active, inactive] }
+              employeeNumber: { type: string }
+        issuedAt: { type: string, format: date-time }
+    TodayAttendance:
+      type: object
+      required: [serverTime, state]
+      properties:
+        serverTime: { type: string, format: date-time }
+        state: { type: string, enum: [not_started, working, on_break, completed] }
+        activeSession: { $ref: '#/components/schemas/WorkSession' }
+    WorkBreak:
+      type: object
+      required: [id, startedAt]
+      properties:
+        id: { type: string, format: uuid }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
+        durationMinutes: { type: integer, minimum: 0 }
+    WorkSession:
+      type: object
+      required: [id, organizationId, membershipId, workDate, startedAt, breaks, state, source, version]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        membershipId: { type: string, format: uuid }
+        workDate: { type: string, format: date }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
+        breaks:
+          type: array
+          items: { $ref: '#/components/schemas/WorkBreak' }
+        workedMinutes: { type: integer, minimum: 0 }
+        state: { type: string, enum: [not_started, working, on_break, completed] }
+        source: { type: string, enum: [clock, approved_correction, admin_import] }
+        version: { type: integer, minimum: 1 }
+    CorrectionValues:
+      type: object
+      additionalProperties: false
+      required: [workDate, startedAt, endedAt, breakMinutes]
+      properties:
+        workDate: { type: string, format: date }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
+        breakMinutes: { type: integer, minimum: 0, maximum: 1440 }
+    CreateCorrection:
+      type: object
+      additionalProperties: false
+      required: [sessionId, expectedVersion, proposed, reason]
+      properties:
+        sessionId: { type: string, format: uuid }
+        expectedVersion: { type: integer, minimum: 1 }
+        proposed: { $ref: '#/components/schemas/CorrectionValues' }
+        reason: { type: string, minLength: 3, maxLength: 1000 }
+    Correction:
+      type: object
+      required: [id, organizationId, requesterMembershipId, sessionId, original, proposed, reason, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        requesterMembershipId: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        original: { $ref: '#/components/schemas/CorrectionValues' }
+        proposed: { $ref: '#/components/schemas/CorrectionValues' }
+        reason: { type: string }
+        status: { type: string, enum: [pending, approved, rejected, cancelled] }
+        reviewedByMembershipId: { type: string, format: uuid }
+        reviewComment: { type: string }
+        createdAt: { type: string, format: date-time }
+        reviewedAt: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code:
+              type: string
+              enum: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, CONFLICT, PERIOD_CLOSED, INVALID_STATE, RATE_LIMITED, INTERNAL_ERROR]
+            message: { type: string }
+            field: { type: string }
+            requestId: { type: string }

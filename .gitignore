@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+
+# Build and framework output
+dist/
+build/
+.next/
+.nuxt/
+.svelte-kit/
+.vite/
+.turbo/
+*.tsbuildinfo
+
+# Environment variables and local secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Supabase local development
+.supabase/
+supabase/.branches/
+supabase/.temp/
+
+# Tests and coverage
+coverage/
+test-results/
+playwright-report/
+blob-report/
+
+# Logs and runtime files
+*.log
+logs/
+*.pid
+*.pid.lock
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local caches
+.cache/
+.eslintcache
+.parcel-cache/
+
+# Editors and operating systems
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temporary and backup files
+tmp/
+temp/
+*.tmp
+*.bak
+*~
+
+# Local exports and generated documents
+exports/
+generated/
