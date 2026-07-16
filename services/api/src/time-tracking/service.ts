@@ -196,7 +196,7 @@ export class TimeTrackingService {
     requestId: UUID,
     command: CreateCorrectionCommand,
   ): Promise<CorrectionRequestDto> {
-    const existingResult = await this.repository.findIdempotentResult(context.organizationId, requestId);
+    const existingResult = await this.repository.findIdempotentResult(context.organizationId, context.membershipId, requestId);
     if (existingResult) {
       return this.expectCorrectionResult(existingResult);
     }
@@ -234,7 +234,10 @@ export class TimeTrackingService {
     };
 
     await this.repository.insertCorrection(correction);
-    await this.repository.saveIdempotentResult(context.organizationId, requestId, { kind: "correction", response: correction });
+    await this.repository.saveIdempotentResult(context.organizationId, context.membershipId, requestId, {
+      kind: "correction",
+      response: correction,
+    });
     return correction;
   }
 
@@ -244,7 +247,7 @@ export class TimeTrackingService {
     requestId: UUID,
     command: ReviewCorrectionCommand,
   ): Promise<CorrectionRequestDto> {
-    const existingResult = await this.repository.findIdempotentResult(context.organizationId, requestId);
+    const existingResult = await this.repository.findIdempotentResult(context.organizationId, context.membershipId, requestId);
     if (existingResult) {
       return this.expectCorrectionResult(existingResult);
     }
@@ -323,7 +326,10 @@ export class TimeTrackingService {
       afterValues: command.decision === "approve" ? correction.proposed : undefined,
       metadata: { sessionId: correction.sessionId },
     });
-    await this.repository.saveIdempotentResult(context.organizationId, requestId, { kind: "correction", response: reviewed });
+    await this.repository.saveIdempotentResult(context.organizationId, context.membershipId, requestId, {
+      kind: "correction",
+      response: reviewed,
+    });
     return reviewed;
   }
 
@@ -333,7 +339,7 @@ export class TimeTrackingService {
     eventType: ClockEventType,
     mutate: (occurredAt: string) => Promise<WorkSessionRecord>,
   ): Promise<ClockCommandResponse> {
-    const existingResult = await this.repository.findIdempotentResult(context.organizationId, requestId);
+    const existingResult = await this.repository.findIdempotentResult(context.organizationId, context.membershipId, requestId);
     if (existingResult) {
       return this.expectClockResult(existingResult);
     }
@@ -353,7 +359,7 @@ export class TimeTrackingService {
     });
 
     const response = { serverTime, session: toWorkSessionDto(session, serverTime) };
-    await this.repository.saveIdempotentResult(context.organizationId, requestId, { kind: "clock", response });
+    await this.repository.saveIdempotentResult(context.organizationId, context.membershipId, requestId, { kind: "clock", response });
     return response;
   }
 

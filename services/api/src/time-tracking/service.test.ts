@@ -60,12 +60,21 @@ class MemoryTimeTrackingRepository implements TimeTrackingRepository {
   public readonly auditEvents: AuditEventRecord[] = [];
   private readonly idempotency = new Map<string, StoredCommandResult>();
 
-  public async findIdempotentResult(organizationIdValue: string, requestId: string): Promise<StoredCommandResult | undefined> {
-    return this.idempotency.get(`${organizationIdValue}:${requestId}`);
+  public async findIdempotentResult(
+    organizationIdValue: string,
+    membershipIdValue: string,
+    requestId: string,
+  ): Promise<StoredCommandResult | undefined> {
+    return this.idempotency.get(`${organizationIdValue}:${membershipIdValue}:${requestId}`);
   }
 
-  public async saveIdempotentResult(organizationIdValue: string, requestId: string, result: StoredCommandResult): Promise<void> {
-    this.idempotency.set(`${organizationIdValue}:${requestId}`, result);
+  public async saveIdempotentResult(
+    organizationIdValue: string,
+    membershipIdValue: string,
+    requestId: string,
+    result: StoredCommandResult,
+  ): Promise<void> {
+    this.idempotency.set(`${organizationIdValue}:${membershipIdValue}:${requestId}`, result);
   }
 
   public async findOpenSession(organizationIdValue: string, membershipIdValue: string): Promise<WorkSessionRecord | undefined> {
@@ -284,6 +293,22 @@ describe("time tracking domain service", () => {
       expectTimeTrackingError(error, "INVALID_STATE");
       return true;
     });
+  });
+
+  it("does not reuse idempotent clock results across memberships in the same organization", async () => {
+    const { service, repository, context } = buildHarness(
+      new QueueClock("2026-07-16T06:00:00.000Z", "2026-07-16T07:00:00.000Z"),
+    );
+    const requestId = "00000000-0000-4000-8000-000000000143";
+    const otherContext = { ...context, membershipId: managerMembershipId };
+
+    const first = await service.clockIn(context, requestId);
+    const second = await service.clockIn(otherContext, requestId);
+
+    expect(second.session.membershipId).toBe(managerMembershipId);
+    expect(second.session.id).not.toBe(first.session.id);
+    expect(repository.sessions.size).toBe(2);
+    expect(repository.clockEvents).toHaveLength(2);
   });
 
   it("builds daily and monthly overviews from completed sessions", async () => {
