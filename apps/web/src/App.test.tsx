@@ -60,10 +60,23 @@ function deferredContext() {
 
 beforeEach(() => {
   localStorage.clear();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          serverTime: "2026-07-17T08:00:00.000Z",
+          state: "not_started",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ),
+  );
 });
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
 });
 
 describe("TeamZeit authentication shell", () => {
@@ -74,7 +87,9 @@ describe("TeamZeit authentication shell", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("heading", { name: "Einfach im Team arbeiten." })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Einfach im Team arbeiten." }, { timeout: 5000 }),
+    ).toBeInTheDocument();
   });
 
   it("renders protected navigation after restoring a session and active membership", async () => {
@@ -88,6 +103,113 @@ describe("TeamZeit authentication shell", () => {
     expect(screen.getAllByText("employee GmbH").length).toBeGreaterThan(0);
     expect(screen.getByText("Employee")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Einstellungen/ })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Príchod" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Začať prestávku" })).toBeDisabled();
+    expect(screen.getByText("Heute wurde noch keine Arbeitszeit erfasst.")).toBeInTheDocument();
+  });
+
+  it("loads only the tenant-scoped current day on the Today dashboard", async () => {
+    const fetcher = vi.mocked(fetch);
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <App authDependencies={{ supabaseClient: supabaseClient(), fetchContext: async () => context() }} />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("button", { name: "Príchod" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledWith(
+      expect.stringMatching(/\/attendance\/today$/),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer valid-token",
+          "X-Organization-Id": "employee-org",
+        }),
+      }),
+    );
+  });
+
+  it("shows loading and a terminal error state on the Today dashboard", async () => {
+    let rejectRequest!: (reason: Error) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        new Promise<Response>((_resolve, reject) => {
+          rejectRequest = reject;
+        }),
+      ),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <App authDependencies={{ supabaseClient: supabaseClient(), fetchContext: async () => context() }} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Arbeitsstand wird geladen.")).toBeInTheDocument();
+    await waitFor(() => expect(rejectRequest).toBeTypeOf("function"));
+    rejectRequest(new TypeError("network"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Die Verbindung zum Server wurde unterbrochen.");
+    expect(screen.queryByText("Arbeitsstand wird geladen.")).not.toBeInTheDocument();
+  });
+
+  it("submits a Today command once and applies its response before the refresh finishes", async () => {
+    let resolveCommand!: (response: Response) => void;
+    const pendingRefresh = new Promise<Response>(() => undefined);
+    const fetcher = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/attendance/commands/clock-in") && init?.method === "POST") {
+        return new Promise<Response>((resolve) => {
+          resolveCommand = resolve;
+        });
+      }
+
+      if (fetcher.mock.calls.length > 2) return pendingRefresh;
+      return Promise.resolve(
+        new Response(JSON.stringify({ serverTime: "2026-07-17T08:00:00.000Z", state: "not_started" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", fetcher);
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <App authDependencies={{ supabaseClient: supabaseClient(), fetchContext: async () => context() }} />
+      </MemoryRouter>,
+    );
+
+    const clockIn = await screen.findByRole("button", { name: "Príchod" });
+    fireEvent.click(clockIn);
+    fireEvent.click(clockIn);
+    expect(await screen.findByRole("button", { name: "Wird gesendet." })).toBeDisabled();
+    expect(fetcher.mock.calls.filter(([input]) => String(input).endsWith("/attendance/commands/clock-in"))).toHaveLength(1);
+
+    resolveCommand(
+      new Response(
+        JSON.stringify({
+          serverTime: "2026-07-17T08:01:00.000Z",
+          session: {
+            id: "session-1",
+            organizationId: "employee-org",
+            membershipId: "employee-membership",
+            workDate: "2026-07-17",
+            startedAt: "2026-07-17T08:01:00.000Z",
+            breaks: [],
+            state: "working",
+            source: "clock",
+            version: 1,
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    expect(await screen.findByText("Arbeitszeit läuft")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Začať prestávku" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Odchod" })).toBeEnabled();
   });
 
   it("keeps protected content hidden while membership context is loading", async () => {

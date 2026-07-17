@@ -1,6 +1,6 @@
 # TeamZeit
 
-TeamZeit is a mobile-first, multi-tenant foundation for workforce time tracking. This repository currently contains the runnable application shell, shared API contracts, and the reference database design. Functional attendance and HR modules are not implemented yet.
+TeamZeit is a mobile-first, multi-tenant workforce time-tracking application. The repository contains a runnable authenticated employee flow, shared API contracts, and tenant-isolated PostgreSQL storage for attendance.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ pnpm dev
 Open:
 
 - web application: `http://127.0.0.1:5173`
-- login placeholder: `http://127.0.0.1:5173/login`
+- login: `http://127.0.0.1:5173/login`
 - API health: `http://127.0.0.1:3000/health`
 - versioned API root: `http://127.0.0.1:3000/api/v1`
 
@@ -138,11 +138,14 @@ docs/              module, database, and authorisation documentation
 - `database/schema.sql` remains the reference model. Local Supabase applies the matching initial schema plus ordered migrations from `supabase/migrations`.
 - Do not run these migrations against production without a reviewed rollout plan.
 
-## Implemented in this foundation
+## Implemented
 
 - responsive application layout;
 - installable PWA manifest and minimal application-shell service worker;
-- placeholder routes for Login, Today, Attendance, Absences, Employees, and Settings;
+- authenticated email OTP and Google login with protected routing and organisation selection;
+- functional Today dashboard for clock-in, breaks, and clock-out;
+- attendance day/month overviews and correction requests;
+- placeholder routes for Absences, Employees, and Settings;
 - environment-based configuration;
 - optional Supabase client initialisation;
 - API health and version root endpoints;
@@ -150,9 +153,6 @@ docs/              module, database, and authorisation documentation
 
 ## Not implemented yet
 
-- real authentication screens and protected routing;
-- tenant selection and membership resolution;
-- attendance commands from `contracts/openapi.yaml`;
 - absence, employee, scheduling, document, approval, reporting, and settings logic;
 - file storage, notifications, and exports;
 - production deployment and monitoring.

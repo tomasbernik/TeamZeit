@@ -89,7 +89,7 @@ function EmptyState({ children }: { children: string }) {
   );
 }
 
-export function AttendancePage() {
+export function AttendancePage({ todayOnly = false }: { todayOnly?: boolean } = {}) {
   const { activeMembership, session } = useAuth();
   const [today, setToday] = useState<{ serverTime: string; state: AttendanceState; activeSession?: WorkSessionDto } | null>(null);
   const [daily, setDaily] = useState<DailyAttendanceOverview | null>(null);
@@ -112,21 +112,31 @@ export function AttendancePage() {
     if (!session || !activeMembership) return null;
     return { accessToken: session.access_token, organizationId: activeMembership.organization.id };
   }, [activeMembership, session]);
-  const loadKey = requestContext ? `${requestContext.accessToken}:${requestContext.organizationId}:${selectedDate}:${selectedMonth}` : null;
+  const loadKey = requestContext
+    ? `${requestContext.accessToken}:${requestContext.organizationId}${todayOnly ? ":today" : `:${selectedDate}:${selectedMonth}`}`
+    : null;
 
-  const loadAttendance = useCallback(async () => {
+  const loadAttendance = useCallback(async (showLoading = true) => {
     if (!requestContext || !loadKey) return;
 
     const loadId = latestLoadRef.current + 1;
     latestLoadRef.current = loadId;
-    setLoading(true);
+    if (showLoading) setLoading(true);
     setError(null);
     try {
-      const [todayResult, dailyResult, monthlyResult] = await Promise.all([
-        fetchTodayAttendance(requestContext),
-        fetchDailyAttendance(requestContext, selectedDate),
-        fetchMonthlyAttendance(requestContext, selectedMonth),
-      ]);
+      let todayResult;
+      let dailyResult: DailyAttendanceOverview | null = null;
+      let monthlyResult: MonthlyAttendanceOverview | null = null;
+
+      if (todayOnly) {
+        todayResult = await fetchTodayAttendance(requestContext);
+      } else {
+        [todayResult, dailyResult, monthlyResult] = await Promise.all([
+          fetchTodayAttendance(requestContext),
+          fetchDailyAttendance(requestContext, selectedDate),
+          fetchMonthlyAttendance(requestContext, selectedMonth),
+        ]);
+      }
       if (latestLoadRef.current !== loadId) return;
       setToday(todayResult);
       setDaily(dailyResult);
@@ -136,9 +146,9 @@ export function AttendancePage() {
       if (latestLoadRef.current !== loadId) return;
       setError(messageFromError(loadError, "Die Zeiterfassung konnte nicht geladen werden."));
     } finally {
-      if (latestLoadRef.current === loadId) setLoading(false);
+      if (showLoading && latestLoadRef.current === loadId) setLoading(false);
     }
-  }, [loadKey, requestContext, selectedDate, selectedMonth]);
+  }, [loadKey, requestContext, selectedDate, selectedMonth, todayOnly]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -151,7 +161,7 @@ export function AttendancePage() {
   const visibleToday = dataKey === loadKey ? today : null;
   const visibleDaily = dataKey === loadKey ? daily : null;
   const visibleMonthly = dataKey === loadKey ? monthly : null;
-  const isLoading = loading || dataKey !== loadKey;
+  const isLoading = loading || (dataKey !== loadKey && !error);
   const state = visibleToday?.state ?? "not_started";
   const selectedSession = firstSession(visibleDaily, visibleToday?.activeSession);
   const canWrite = activeMembership?.role !== "auditor";
@@ -172,10 +182,12 @@ export function AttendancePage() {
     const key = commandKeysRef.current[command] ?? operationKey();
     commandKeysRef.current[command] = key;
     try {
-      await sendClockCommand(requestContext, command, key);
+      const result = await sendClockCommand(requestContext, command, key);
       delete commandKeysRef.current[command];
+      setToday({ serverTime: result.serverTime, state: result.session.state, activeSession: result.session });
+      setDataKey(loadKey);
       setSuccess("Arbeitszeit wurde aktualisiert.");
-      await loadAttendance();
+      void loadAttendance(false);
     } catch (commandError) {
       if (!isNetworkError(commandError)) delete commandKeysRef.current[command];
       setError(messageFromError(commandError, "Die Aktion konnte nicht ausgeführt werden."));
@@ -230,11 +242,13 @@ export function AttendancePage() {
   }
 
   return (
-    <section className="attendance-page" aria-labelledby="attendance-title">
+    <section className={`attendance-page${todayOnly ? " today-page" : ""}`} aria-labelledby="attendance-title">
       <div className="page-heading">
-        <p className="eyebrow">Arbeitszeit</p>
-        <h1 id="attendance-title">Dochádzka</h1>
-        <p className="page-intro">Erfasse deinen Arbeitstag und prüfe Tages- und Monatswerte.</p>
+        <p className="eyebrow">{todayOnly ? "Übersicht" : "Arbeitszeit"}</p>
+        <h1 id="attendance-title">{todayOnly ? "Heute" : "Dochádzka"}</h1>
+        <p className="page-intro">
+          {todayOnly ? "Erfasse deinen Arbeitstag direkt nach der Anmeldung." : "Erfasse deinen Arbeitstag und prüfe Tages- und Monatswerte."}
+        </p>
       </div>
 
       {error && <p className="error-note" role="alert">{error}</p>}
@@ -286,12 +300,13 @@ export function AttendancePage() {
                   </button>
                 ))}
               </div>
+              {state === "not_started" && <p className="hint-text">Heute wurde noch keine Arbeitszeit erfasst.</p>}
               {!canWrite && <p className="hint-text">Auditoren können Arbeitszeiten nur lesen.</p>}
             </>
           )}
         </section>
 
-        <section className="panel">
+        {!todayOnly && <section className="panel">
           <div className="panel-header">
             <div>
               <p className="eyebrow">Tag</p>
@@ -319,9 +334,9 @@ export function AttendancePage() {
           ) : (
             <EmptyState>Für diesen Tag gibt es noch keine Einträge.</EmptyState>
           )}
-        </section>
+        </section>}
 
-        <section className="panel">
+        {!todayOnly && <section className="panel">
           <div className="panel-header">
             <div>
               <p className="eyebrow">Monat</p>
@@ -349,9 +364,9 @@ export function AttendancePage() {
           ) : (
             <EmptyState>Für diesen Monat gibt es noch keine freigegebenen Tageswerte.</EmptyState>
           )}
-        </section>
+        </section>}
 
-        <section className="panel correction-panel">
+        {!todayOnly && <section className="panel correction-panel">
           <div className="panel-header">
             <div>
               <p className="eyebrow">Korrektur</p>
@@ -383,7 +398,7 @@ export function AttendancePage() {
           ) : (
             <EmptyState>Wähle einen Tag mit Arbeitszeit, um eine Korrektur anzufragen.</EmptyState>
           )}
-        </section>
+        </section>}
       </div>
     </section>
   );
