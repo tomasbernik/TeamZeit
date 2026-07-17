@@ -23,6 +23,28 @@ insert into auth.users (
   ('10000000-0000-4000-8000-000000000007', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'foreign.employee@example.test', crypt('local-only-password', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Frida Fremd"}', now(), now())
 on conflict (id) do nothing;
 
+-- GoTrue scans these token fields as strings when handling passwordless email
+-- login. Keep fictional seed users compatible with current local Auth schemas.
+update auth.users
+set
+  confirmation_token = coalesce(confirmation_token, ''),
+  recovery_token = coalesce(recovery_token, ''),
+  email_change_token_new = coalesce(email_change_token_new, ''),
+  email_change = coalesce(email_change, ''),
+  phone_change = coalesce(phone_change, ''),
+  phone_change_token = coalesce(phone_change_token, ''),
+  email_change_token_current = coalesce(email_change_token_current, ''),
+  reauthentication_token = coalesce(reauthentication_token, '')
+where id in (
+  '10000000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000002',
+  '10000000-0000-4000-8000-000000000003',
+  '10000000-0000-4000-8000-000000000004',
+  '10000000-0000-4000-8000-000000000005',
+  '10000000-0000-4000-8000-000000000006',
+  '10000000-0000-4000-8000-000000000007'
+);
+
 insert into public.organizations (id, name, slug, time_zone) values
   ('20000000-0000-4000-8000-000000000001', 'Fiktive Werkstatt Nord', 'fiktive-werkstatt-nord', 'Europe/Berlin'),
   ('20000000-0000-4000-8000-000000000002', 'Fiktives Buero Sued', 'fiktives-buero-sued', 'Europe/Berlin')

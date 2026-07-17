@@ -80,6 +80,31 @@ afterEach(() => {
 });
 
 describe("TeamZeit authentication shell", () => {
+  it("requests an email link only for an existing local user", async () => {
+    const client = supabaseClient(null);
+
+    render(
+      <MemoryRouter initialEntries={["/login"]}>
+        <App authDependencies={{ supabaseClient: client }} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(await screen.findByLabelText("E-Mail"), {
+      target: { value: "employee.one@example.test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Mit E-Mail anmelden" }));
+
+    await waitFor(() =>
+      expect(client.auth.signInWithOtp).toHaveBeenCalledWith({
+        email: "employee.one@example.test",
+        options: {
+          emailRedirectTo: window.location.origin,
+          shouldCreateUser: false,
+        },
+      }),
+    );
+  });
+
   it("redirects protected routes to login without a session", async () => {
     render(
       <MemoryRouter initialEntries={["/"]}>

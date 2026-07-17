@@ -153,7 +153,10 @@ export function AuthProvider({ children, dependencies = {} }: { children: ReactN
         setError(null);
         const result = await supabase.auth.signInWithOtp({
           email,
-          options: { emailRedirectTo: window.location.origin },
+          options: {
+            emailRedirectTo: window.location.origin,
+            shouldCreateUser: false,
+          },
         });
         if (result.error) throw new Error(result.error.message);
       },
