@@ -110,7 +110,9 @@ export async function resolveCurrentContext(
   const [profileResult, membershipsResult] = await Promise.all([
     query<ProfileRow>(client, "profiles").select("display_name").eq("id", user.id).maybeSingle(),
     query<MembershipRow>(client, "memberships")
-      .select("id, role, status, employee_number, organization:organizations(id, name, slug, time_zone, logo_path)")
+      .select(
+        "id, role, status, employee_number, organization:organizations!memberships_organization_id_fkey(id, name, slug, time_zone, logo_path)",
+      )
       .eq("user_id", user.id)
       .order("created_at", { ascending: true }),
   ]);
