@@ -11,6 +11,8 @@ const apiEnvironmentSchema = z.object({
   API_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   WEB_ORIGIN: z.string().url().default("http://localhost:5173"),
   SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_PUBLISHABLE_KEY: z.string().min(1).optional(),
+  SUPABASE_SECRET_KEY: z.string().min(1).optional(),
   SUPABASE_ANON_KEY: z.string().min(1).optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
   TIME_TRACKING_REPOSITORY: z.enum(["memory", "postgres"]).optional(),
@@ -31,8 +33,10 @@ export interface ApiConfig {
 
 export function readApiConfig(source: NodeJS.ProcessEnv = process.env): ApiConfig {
   const value = apiEnvironmentSchema.parse(source);
-  const supabaseConfigured = Boolean(value.SUPABASE_URL && value.SUPABASE_ANON_KEY);
-  const supabaseServiceRoleConfigured = Boolean(value.SUPABASE_URL && value.SUPABASE_SERVICE_ROLE_KEY);
+  const supabasePublishableKey = value.SUPABASE_PUBLISHABLE_KEY ?? value.SUPABASE_ANON_KEY;
+  const supabaseSecretKey = value.SUPABASE_SECRET_KEY ?? value.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseConfigured = Boolean(value.SUPABASE_URL && supabasePublishableKey);
+  const supabaseServiceRoleConfigured = Boolean(value.SUPABASE_URL && supabaseSecretKey);
   const timeTrackingRepository = value.TIME_TRACKING_REPOSITORY ?? (value.NODE_ENV === "production" ? "postgres" : "memory");
 
   return {
@@ -41,8 +45,8 @@ export function readApiConfig(source: NodeJS.ProcessEnv = process.env): ApiConfi
     port: value.API_PORT,
     webOrigin: value.WEB_ORIGIN,
     ...(value.SUPABASE_URL ? { supabaseUrl: value.SUPABASE_URL } : {}),
-    ...(value.SUPABASE_ANON_KEY ? { supabaseAnonKey: value.SUPABASE_ANON_KEY } : {}),
-    ...(value.SUPABASE_SERVICE_ROLE_KEY ? { supabaseServiceRoleKey: value.SUPABASE_SERVICE_ROLE_KEY } : {}),
+    ...(supabasePublishableKey ? { supabaseAnonKey: supabasePublishableKey } : {}),
+    ...(supabaseSecretKey ? { supabaseServiceRoleKey: supabaseSecretKey } : {}),
     supabaseConfigured,
     supabaseServiceRoleConfigured,
     timeTrackingRepository,

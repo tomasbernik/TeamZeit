@@ -15,9 +15,10 @@ describe("readApiConfig", () => {
     const config = readApiConfig({
       NODE_ENV: "test",
       SUPABASE_URL: "https://example.supabase.co",
-      SUPABASE_ANON_KEY: "publishable-key",
+      SUPABASE_PUBLISHABLE_KEY: "publishable-key",
     });
     expect(config.supabaseConfigured).toBe(true);
+    expect(config.supabaseAnonKey).toBe("publishable-key");
     expect(config.supabaseServiceRoleConfigured).toBe(false);
   });
 
@@ -25,13 +26,28 @@ describe("readApiConfig", () => {
     const config = readApiConfig({
       NODE_ENV: "production",
       SUPABASE_URL: "https://example.supabase.co",
-      SUPABASE_ANON_KEY: "publishable-key",
-      SUPABASE_SERVICE_ROLE_KEY: "server-only-key",
+      SUPABASE_PUBLISHABLE_KEY: "publishable-key",
+      SUPABASE_SECRET_KEY: "server-only-key",
       TIME_TRACKING_REPOSITORY: "postgres",
     });
 
     expect(config.supabaseConfigured).toBe(true);
     expect(config.supabaseServiceRoleConfigured).toBe(true);
+    expect(config.supabaseServiceRoleKey).toBe("server-only-key");
     expect(config.timeTrackingRepository).toBe("postgres");
+  });
+
+  it("keeps backwards compatibility with legacy anon and service-role names", () => {
+    const config = readApiConfig({
+      NODE_ENV: "test",
+      SUPABASE_URL: "https://example.supabase.co",
+      SUPABASE_ANON_KEY: "legacy-publishable-key",
+      SUPABASE_SERVICE_ROLE_KEY: "legacy-server-only-key",
+    });
+
+    expect(config.supabaseAnonKey).toBe("legacy-publishable-key");
+    expect(config.supabaseServiceRoleKey).toBe("legacy-server-only-key");
+    expect(config.supabaseConfigured).toBe(true);
+    expect(config.supabaseServiceRoleConfigured).toBe(true);
   });
 });

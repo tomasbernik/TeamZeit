@@ -12,7 +12,7 @@ function optionalValue(value: string | undefined): string | undefined {
 
 export function readWebConfig(env: ImportMetaEnv = import.meta.env): WebConfig {
   const supabaseUrl = optionalValue(env.VITE_SUPABASE_URL);
-  const supabaseAnonKey = optionalValue(env.VITE_SUPABASE_ANON_KEY);
+  const supabaseAnonKey = optionalValue(env.VITE_SUPABASE_PUBLISHABLE_KEY) ?? optionalValue(env.VITE_SUPABASE_ANON_KEY);
 
   return {
     apiUrl: optionalValue(env.VITE_API_URL) ?? "/api/v1",
