@@ -1,458 +1,162 @@
-import type {
-  AttendanceState,
-  ClockCommandResponse,
-  CorrectionRequestDto,
-  ISODate,
-  TodayAttendanceResponse,
-  UUID,
-  WorkSessionsResponse,
-} from "@teamzeit/contracts";
-
-import {
-  calculateBreakMinutes,
-  correctionValuesFromSession,
-  deriveAttendanceState,
-  toWorkSessionDto,
-  validateCorrectionValues,
-} from "./calculations.js";
+import type { ClockCommandResponse, CreateWorkSessionRequest, ISODate, TodayAttendanceResponse, UUID, UpdateWorkSessionRequest, WorkSessionDto, WorkSessionsResponse } from "@teamzeit/contracts";
+import { calculateGapMinutes, deriveAttendanceState, toWorkSessionDto } from "./calculations.js";
 import { conflict, invalidState, validationError } from "./errors.js";
 import { localDateForInstant, monthBounds, toIsoInstant } from "./time.js";
-import type {
-  AttendanceMembershipContext,
-  Clock,
-  ClockEventType,
-  CreateCorrectionCommand,
-  DailyAttendanceOverview,
-  IdGenerator,
-  MonthlyAttendanceOverview,
-  PeriodGuard,
-  ReviewerContext,
-  ReviewCorrectionCommand,
-  StoredCommandResult,
-  TimeTrackingRepository,
-  WorkBreakRecord,
-  WorkSessionRecord,
-} from "./types.js";
+import type { AttendanceMembershipContext, Clock, ClockEventType, DailyAttendanceOverview, IdGenerator, MonthlyAttendanceOverview, PeriodGuard, TimeTrackingRepository, WorkSessionRecord } from "./types.js";
 
-export interface TimeTrackingServiceDependencies {
-  repository: TimeTrackingRepository;
-  periodGuard: PeriodGuard;
-  clock: Clock;
-  ids: IdGenerator;
-}
+export interface TimeTrackingServiceDependencies { repository: TimeTrackingRepository; periodGuard: PeriodGuard; clock: Clock; ids: IdGenerator; }
 
 export class TimeTrackingService {
-  private readonly repository: TimeTrackingRepository;
-  private readonly periodGuard: PeriodGuard;
-  private readonly clock: Clock;
-  private readonly ids: IdGenerator;
+  public constructor(private readonly dependencies: TimeTrackingServiceDependencies) {}
 
-  public constructor(dependencies: TimeTrackingServiceDependencies) {
-    this.repository = dependencies.repository;
-    this.periodGuard = dependencies.periodGuard;
-    this.clock = dependencies.clock;
-    this.ids = dependencies.ids;
-  }
-
-  public async clockIn(context: AttendanceMembershipContext, requestId: UUID): Promise<ClockCommandResponse> {
-    return this.runClockCommand(context, requestId, "clock_in", async (occurredAt) => {
-      const workDate = localDateForInstant(occurredAt, context.organizationTimeZone);
-      await this.periodGuard.assertPeriodOpen({
-        organizationId: context.organizationId,
-        membershipId: context.membershipId,
-        workDate,
-        operation: "clock",
-      });
-
-      const existing = await this.repository.findOpenSession(context.organizationId, context.membershipId);
-      if (existing) {
-        throw invalidState("Cannot clock in while a work session is already open.");
-      }
-
-      const session: WorkSessionRecord = {
-        id: this.ids.uuid(),
-        organizationId: context.organizationId,
-        membershipId: context.membershipId,
-        workDate,
-        startedAt: occurredAt,
-        breaks: [],
-        source: "clock",
-        version: 1,
-      };
-
-      await this.repository.insertSession(session);
+  public clockIn(context: AttendanceMembershipContext, requestId: UUID): Promise<ClockCommandResponse> {
+    return this.runClockCommand(context, requestId, "clock_in", async (now) => {
+      const workDate = localDateForInstant(now, context.organizationTimeZone);
+      await this.assertOpen(context, workDate, "clock");
+      if (await this.dependencies.repository.findOpenSession(context.organizationId, context.membershipId)) throw invalidState("Sie sind bereits eingestempelt.");
+      const session: WorkSessionRecord = { id: this.dependencies.ids.uuid(), organizationId: context.organizationId, membershipId: context.membershipId, workDate, startedAt: now, breaks: [], source: "clock", version: 1 };
+      await this.ensureNoOverlap(context, session);
+      await this.dependencies.repository.insertSession(session);
       return session;
     });
   }
 
-  public async startBreak(context: AttendanceMembershipContext, requestId: UUID): Promise<ClockCommandResponse> {
-    return this.runClockCommand(context, requestId, "break_start", async (occurredAt) => {
-      const session = await this.requireOpenSession(context);
-      await this.assertSessionPeriodOpen(context, session);
-
-      if (deriveAttendanceState(session) === "on_break") {
-        throw invalidState("Cannot start a break while another break is open.");
-      }
-
-      const workBreak: WorkBreakRecord = {
-        id: this.ids.uuid(),
-        organizationId: context.organizationId,
-        workSessionId: session.id,
-        startedAt: occurredAt,
-      };
-      const updated = { ...session, breaks: [...session.breaks, workBreak], version: session.version + 1 };
-
-      await this.repository.updateSession(updated);
+  public clockOut(context: AttendanceMembershipContext, requestId: UUID): Promise<ClockCommandResponse> {
+    return this.runClockCommand(context, requestId, "clock_out", async (now) => {
+      const session = await this.dependencies.repository.findOpenSession(context.organizationId, context.membershipId);
+      if (!session) throw invalidState("Sie sind nicht eingestempelt.");
+      await this.assertOpen(context, session.workDate, "clock");
+      if (Date.parse(now) <= Date.parse(session.startedAt)) throw invalidState("Das Ende muss nach dem Beginn liegen.");
+      const updated = { ...session, endedAt: now, version: session.version + 1 };
+      await this.dependencies.repository.updateSession(updated);
       return updated;
     });
   }
 
-  public async endBreak(context: AttendanceMembershipContext, requestId: UUID): Promise<ClockCommandResponse> {
-    return this.runClockCommand(context, requestId, "break_end", async (occurredAt) => {
-      const session = await this.requireOpenSession(context);
-      await this.assertSessionPeriodOpen(context, session);
-
-      const openBreak = session.breaks.find((workBreak) => !workBreak.endedAt);
-      if (!openBreak) {
-        throw invalidState("Cannot end a break when no break is open.");
-      }
-
-      const breaks = session.breaks.map((workBreak) =>
-        workBreak.id === openBreak.id ? { ...workBreak, endedAt: occurredAt } : workBreak,
-      );
-      const updated = { ...session, breaks, version: session.version + 1 };
-
-      await this.repository.updateSession(updated);
-      return updated;
-    });
-  }
-
-  public async clockOut(context: AttendanceMembershipContext, requestId: UUID): Promise<ClockCommandResponse> {
-    return this.runClockCommand(context, requestId, "clock_out", async (occurredAt) => {
-      const session = await this.requireOpenSession(context);
-      await this.assertSessionPeriodOpen(context, session);
-
-      if (deriveAttendanceState(session) === "on_break") {
-        throw invalidState("Cannot clock out while a break is open.");
-      }
-
-      const updated = { ...session, endedAt: occurredAt, version: session.version + 1 };
-      await this.repository.updateSession(updated);
-      return updated;
-    });
-  }
+  /** Deprecated compatibility alias: a break starts by closing the current interval. */
+  public startBreak(context: AttendanceMembershipContext, requestId: UUID) { return this.runClockAlias(context, requestId, "break_start", false); }
+  /** Deprecated compatibility alias: a break ends by opening a new interval. */
+  public endBreak(context: AttendanceMembershipContext, requestId: UUID) { return this.runClockAlias(context, requestId, "break_end", true); }
 
   public async getCurrentDay(context: AttendanceMembershipContext): Promise<TodayAttendanceResponse> {
-    const serverTime = toIsoInstant(this.clock.now());
-    const session = await this.repository.findOpenSession(context.organizationId, context.membershipId);
-
-    return {
-      serverTime,
-      state: deriveAttendanceState(session),
-      ...(session ? { activeSession: toWorkSessionDto(session, serverTime) } : {}),
-    };
+    const serverTime = toIsoInstant(this.dependencies.clock.now());
+    const workDate = localDateForInstant(serverTime, context.organizationTimeZone);
+    const sessions = await this.dependencies.repository.listSessions(context.organizationId, context.membershipId, workDate, workDate);
+    const active = sessions.find((item) => !item.endedAt);
+    const overview = this.buildDailyOverview(workDate, sessions, serverTime);
+    return { serverTime, workDate, state: deriveAttendanceState(active), ...(active ? { activeSession: toWorkSessionDto(active, serverTime) } : {}), sessions: overview.sessions, workedMinutes: overview.workedMinutes, breakMinutes: overview.breakMinutes };
   }
 
   public async getDailyOverview(context: AttendanceMembershipContext, workDate: ISODate): Promise<DailyAttendanceOverview> {
-    const sessions = await this.repository.listSessions(context.organizationId, context.membershipId, workDate, workDate);
-    return this.buildDailyOverview(workDate, sessions);
+    return this.buildDailyOverview(workDate, await this.dependencies.repository.listSessions(context.organizationId, context.membershipId, workDate, workDate));
   }
 
   public async getMonthlyOverview(context: AttendanceMembershipContext, month: string): Promise<MonthlyAttendanceOverview> {
     const { from, to } = monthBounds(month);
-    const sessions = await this.repository.listSessions(context.organizationId, context.membershipId, from, to);
-    const byDate = new Map<ISODate, WorkSessionRecord[]>();
-
-    for (const session of sessions) {
-      const existing = byDate.get(session.workDate) ?? [];
-      existing.push(session);
-      byDate.set(session.workDate, existing);
-    }
-
-    const days = [...byDate.entries()]
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([workDate, daySessions]) => this.buildDailyOverview(workDate, daySessions));
-
-    return {
-      month,
-      days,
-      workedMinutes: days.reduce((total, day) => total + day.workedMinutes, 0),
-      breakMinutes: days.reduce((total, day) => total + day.breakMinutes, 0),
-    };
+    const sessions = await this.dependencies.repository.listSessions(context.organizationId, context.membershipId, from, to);
+    const grouped = new Map<string, WorkSessionRecord[]>();
+    for (const session of sessions) grouped.set(session.workDate, [...(grouped.get(session.workDate) ?? []), session]);
+    const days = [...grouped].sort(([a], [b]) => a.localeCompare(b)).map(([date, items]) => this.buildDailyOverview(date, items));
+    return { month, days, workedMinutes: days.reduce((n, day) => n + day.workedMinutes, 0), breakMinutes: days.reduce((n, day) => n + day.breakMinutes, 0) };
   }
 
-  public async listOwnSessions(
-    context: AttendanceMembershipContext,
-    from: ISODate,
-    to: ISODate,
-  ): Promise<WorkSessionsResponse> {
-    const now = toIsoInstant(this.clock.now());
-    const sessions = await this.repository.listSessions(context.organizationId, context.membershipId, from, to);
-    return { items: sessions.map((session) => toWorkSessionDto(session, now)) };
+  public async listOwnSessions(context: AttendanceMembershipContext, from: ISODate, to: ISODate): Promise<WorkSessionsResponse> {
+    return { items: (await this.dependencies.repository.listSessions(context.organizationId, context.membershipId, from, to)).map((item) => toWorkSessionDto(item)) };
   }
 
-  public async createCorrection(
-    context: AttendanceMembershipContext,
-    requestId: UUID,
-    command: CreateCorrectionCommand,
-  ): Promise<CorrectionRequestDto> {
-    return this.withRepositoryTransaction(async () => {
-      const existingResult = await this.repository.findIdempotentResult(context.organizationId, context.membershipId, requestId);
-      if (existingResult) {
-        return this.expectCorrectionResult(existingResult);
-      }
-
-      validateCorrectionValues(command.proposed);
-      await this.periodGuard.assertPeriodOpen({
-        organizationId: context.organizationId,
-        membershipId: context.membershipId,
-        workDate: command.proposed.workDate,
-        operation: "correction",
-      });
-
-      const session = await this.repository.findSession(context.organizationId, context.membershipId, command.sessionId);
-      if (!session) {
-        throw validationError("Session was not found for the current membership.", "sessionId");
-      }
-
-      if (session.version !== command.expectedVersion) {
-        throw conflict("Session version is stale.", "expectedVersion");
-      }
-
-      const original = correctionValuesFromSession(session);
-      const now = toIsoInstant(this.clock.now());
-      const correction: CorrectionRequestDto & { expectedVersion: number } = {
-        id: this.ids.uuid(),
-        organizationId: context.organizationId,
-        requesterMembershipId: context.membershipId,
-        sessionId: session.id,
-        original,
-        proposed: command.proposed,
-        reason: command.reason,
-        status: "pending",
-        createdAt: now,
-        expectedVersion: command.expectedVersion,
-      };
-
-      await this.repository.insertCorrection(correction);
-      await this.repository.saveIdempotentResult(context.organizationId, context.membershipId, requestId, {
-        kind: "correction",
-        response: correction,
-      });
-      return correction;
+  public createSession(context: AttendanceMembershipContext, requestId: UUID, input: CreateWorkSessionRequest): Promise<WorkSessionDto> {
+    return this.runSessionCommand(context, requestId, async () => {
+      this.validateInterval(context, input);
+      await this.assertOpen(context, input.workDate, "manual");
+      const session: WorkSessionRecord = { id: this.dependencies.ids.uuid(), organizationId: context.organizationId, membershipId: context.membershipId, ...input, breaks: [], source: "manual", version: 1 };
+      await this.ensureNoOverlap(context, session);
+      await this.dependencies.repository.insertSession(session);
+      await this.audit(context, requestId, "work_session.created", session, undefined, session);
+      return session;
     });
   }
 
-  public async reviewCorrection(
-    context: ReviewerContext,
-    correctionId: UUID,
-    requestId: UUID,
-    command: ReviewCorrectionCommand,
-  ): Promise<CorrectionRequestDto> {
-    return this.withRepositoryTransaction(async () => {
-      const existingResult = await this.repository.findIdempotentResult(context.organizationId, context.membershipId, requestId);
-      if (existingResult) {
-        return this.expectCorrectionResult(existingResult);
-      }
-
-      if (!context.canReviewCorrections) {
-        throw conflict("Reviewer is not authorised for correction review.");
-      }
-
-      const correction = await this.repository.findCorrection(context.organizationId, correctionId);
-      if (!correction) {
-        throw validationError("Correction was not found.", "correctionId");
-      }
-
-      if (correction.requesterMembershipId === context.membershipId) {
-        throw conflict("A requester cannot review their own correction.");
-      }
-
-      if (correction.status !== "pending") {
-        throw conflict("Correction has already been reviewed.");
-      }
-
-      await this.periodGuard.assertPeriodOpen({
-        organizationId: context.organizationId,
-        membershipId: correction.requesterMembershipId,
-        workDate: correction.proposed.workDate,
-        operation: "correction",
-      });
-
-      const now = toIsoInstant(this.clock.now());
-      const reviewed: CorrectionRequestDto & { expectedVersion: number } = {
-        ...correction,
-        status: command.decision === "approve" ? "approved" : "rejected",
-        reviewedByMembershipId: context.membershipId,
-        ...(command.comment ? { reviewComment: command.comment } : {}),
-        reviewedAt: now,
-      };
-
-      if (command.decision === "approve") {
-        const session = await this.repository.findSession(
-          context.organizationId,
-          correction.requesterMembershipId,
-          correction.sessionId,
-        );
-
-        if (!session) {
-          throw conflict("Session for correction no longer exists.");
-        }
-
-        if (session.version !== correction.expectedVersion) {
-          throw conflict("Session version is stale.");
-        }
-
-        await this.repository.updateSession({
-          ...session,
-          workDate: correction.proposed.workDate,
-          startedAt: correction.proposed.startedAt,
-          endedAt: correction.proposed.endedAt,
-          breaks: buildSyntheticCorrectionBreaks(
-            session,
-            correction.proposed.startedAt,
-            correction.proposed.breakMinutes,
-            this.ids.uuid(),
-          ),
-          source: "approved_correction",
-          version: session.version + 1,
-        });
-      }
-
-      await this.repository.updateCorrection(reviewed);
-      await this.repository.appendAuditEvent({
-        id: this.ids.uuid(),
-        organizationId: context.organizationId,
-        actorUserId: context.userId,
-        actorMembershipId: context.membershipId,
-        action: command.decision === "approve" ? "correction.approved" : "correction.rejected",
-        entityType: "correction_request",
-        entityId: correction.id,
-        occurredAt: now,
-        requestId,
-        beforeValues: correction.original,
-        afterValues: command.decision === "approve" ? correction.proposed : undefined,
-        metadata: { sessionId: correction.sessionId },
-      });
-      await this.repository.saveIdempotentResult(context.organizationId, context.membershipId, requestId, {
-        kind: "correction",
-        response: reviewed,
-      });
-      return reviewed;
+  public updateSession(context: AttendanceMembershipContext, sessionId: UUID, requestId: UUID, input: UpdateWorkSessionRequest): Promise<WorkSessionDto> {
+    return this.runSessionCommand(context, requestId, async () => {
+      this.validateInterval(context, input);
+      const existing = await this.requireOwnSession(context, sessionId);
+      if (existing.version !== input.expectedVersion) throw conflict("Der Eintrag wurde zwischenzeitlich geändert.", "expectedVersion");
+      await this.assertOpen(context, existing.workDate, "manual");
+      if (input.workDate !== existing.workDate) await this.assertOpen(context, input.workDate, "manual");
+      const updated = { ...existing, workDate: input.workDate, startedAt: input.startedAt, endedAt: input.endedAt, source: "manual" as const, version: existing.version + 1 };
+      await this.ensureNoOverlap(context, updated, existing.id);
+      await this.dependencies.repository.updateSession(updated);
+      await this.audit(context, requestId, "work_session.updated", updated, existing, updated);
+      return updated;
     });
   }
 
-  private async runClockCommand(
-    context: AttendanceMembershipContext,
-    requestId: UUID,
-    eventType: ClockEventType,
-    mutate: (occurredAt: string) => Promise<WorkSessionRecord>,
-  ): Promise<ClockCommandResponse> {
-    return this.withRepositoryTransaction(async () => {
-      const existingResult = await this.repository.findIdempotentResult(context.organizationId, context.membershipId, requestId);
-      if (existingResult) {
-        return this.expectClockResult(existingResult);
+  public archiveSession(context: AttendanceMembershipContext, sessionId: UUID, requestId: UUID, expectedVersion: number): Promise<WorkSessionDto> {
+    return this.runSessionCommand(context, requestId, async () => {
+      const existing = await this.requireOwnSession(context, sessionId);
+      if (existing.version !== expectedVersion) throw conflict("Der Eintrag wurde zwischenzeitlich geändert.", "expectedVersion");
+      await this.assertOpen(context, existing.workDate, "manual");
+      const archived = { ...existing, archivedAt: toIsoInstant(this.dependencies.clock.now()), version: existing.version + 1 };
+      await this.dependencies.repository.updateSession(archived);
+      await this.audit(context, requestId, "work_session.archived", archived, existing, undefined);
+      return archived;
+    });
+  }
+
+  private async runClockAlias(context: AttendanceMembershipContext, requestId: UUID, eventType: ClockEventType, opens: boolean) {
+    return this.runClockCommand(context, requestId, eventType, async (now) => {
+      if (opens) {
+        const workDate = localDateForInstant(now, context.organizationTimeZone);
+        await this.assertOpen(context, workDate, "clock");
+        if (await this.dependencies.repository.findOpenSession(context.organizationId, context.membershipId)) throw invalidState("Sie sind bereits eingestempelt.");
+        const session: WorkSessionRecord = { id: this.dependencies.ids.uuid(), organizationId: context.organizationId, membershipId: context.membershipId, workDate, startedAt: now, breaks: [], source: "clock", version: 1 };
+        await this.ensureNoOverlap(context, session);
+        await this.dependencies.repository.insertSession(session); return session;
       }
+      const session = await this.dependencies.repository.findOpenSession(context.organizationId, context.membershipId);
+      if (!session) throw invalidState("Sie sind nicht eingestempelt.");
+      await this.assertOpen(context, session.workDate, "clock");
+      if (Date.parse(now) <= Date.parse(session.startedAt)) throw invalidState("Das Ende muss nach dem Beginn liegen.");
+      const updated = { ...session, endedAt: now, version: session.version + 1 };
+      await this.dependencies.repository.updateSession(updated); return updated;
+    });
+  }
 
-      const serverTime = toIsoInstant(this.clock.now());
-      const session = await mutate(serverTime);
-
-      await this.repository.appendClockEvent({
-        id: this.ids.uuid(),
-        organizationId: context.organizationId,
-        workSessionId: session.id,
-        membershipId: context.membershipId,
-        eventType,
-        occurredAt: serverTime,
-        recordedAt: serverTime,
-        requestId,
-      });
-
+  private runClockCommand(context: AttendanceMembershipContext, requestId: UUID, eventType: ClockEventType, mutation: (now: string) => Promise<WorkSessionRecord>): Promise<ClockCommandResponse> {
+    return this.transaction(async () => {
+      const previous = await this.dependencies.repository.findIdempotentResult(context.organizationId, context.membershipId, requestId);
+      if (previous) { if (previous.kind !== "clock") throw conflict("Der Idempotency-Key wurde bereits verwendet."); return previous.response as ClockCommandResponse; }
+      const serverTime = toIsoInstant(this.dependencies.clock.now()); const session = await mutation(serverTime);
+      await this.dependencies.repository.appendClockEvent({ id: this.dependencies.ids.uuid(), organizationId: context.organizationId, workSessionId: session.id, membershipId: context.membershipId, eventType, occurredAt: serverTime, recordedAt: serverTime, requestId });
       const response = { serverTime, session: toWorkSessionDto(session, serverTime) };
-      await this.repository.saveIdempotentResult(context.organizationId, context.membershipId, requestId, {
-        kind: "clock",
-        response,
-      });
-      return response;
+      await this.dependencies.repository.saveIdempotentResult(context.organizationId, context.membershipId, requestId, { kind: "clock", response }); return response;
     });
   }
 
-  private async withRepositoryTransaction<T>(operation: () => Promise<T>): Promise<T> {
-    return this.repository.transaction ? this.repository.transaction(operation) : operation();
-  }
-
-  private async requireOpenSession(context: AttendanceMembershipContext): Promise<WorkSessionRecord> {
-    const session = await this.repository.findOpenSession(context.organizationId, context.membershipId);
-    if (!session) {
-      throw invalidState("Cannot perform this operation before clocking in.");
-    }
-
-    return session;
-  }
-
-  private async assertSessionPeriodOpen(context: AttendanceMembershipContext, session: WorkSessionRecord): Promise<void> {
-    await this.periodGuard.assertPeriodOpen({
-      organizationId: context.organizationId,
-      membershipId: context.membershipId,
-      workDate: session.workDate,
-      operation: "clock",
+  private runSessionCommand(context: AttendanceMembershipContext, requestId: UUID, mutation: () => Promise<WorkSessionRecord>): Promise<WorkSessionDto> {
+    return this.transaction(async () => {
+      const previous = await this.dependencies.repository.findIdempotentResult(context.organizationId, context.membershipId, requestId);
+      if (previous) { if (previous.kind !== "session") throw conflict("Der Idempotency-Key wurde bereits verwendet."); return previous.response as WorkSessionDto; }
+      const session = await mutation(); const response = toWorkSessionDto(session);
+      await this.dependencies.repository.saveIdempotentResult(context.organizationId, context.membershipId, requestId, { kind: "session", response }); return response;
     });
   }
 
-  private buildDailyOverview(workDate: ISODate, sessions: WorkSessionRecord[]): DailyAttendanceOverview {
-    const now = toIsoInstant(this.clock.now());
-    const sessionDtos = sessions.map((session) => toWorkSessionDto(session, now));
-    const workedMinutes = sessionDtos.reduce((total, session) => total + (session.workedMinutes ?? 0), 0);
-    const openSession = sessions.find((session) => !session.endedAt);
-    const state: AttendanceState = openSession ? deriveAttendanceState(openSession) : "not_started";
-
-    return {
-      workDate,
-      state,
-      sessions: sessionDtos,
-      workedMinutes,
-      breakMinutes: sessionDtos.reduce((total, session) => total + calculateBreakMinutes(session.breaks, now), 0),
-    };
+  private buildDailyOverview(workDate: ISODate, sessions: WorkSessionRecord[], now = toIsoInstant(this.dependencies.clock.now())): DailyAttendanceOverview {
+    const dtos = sessions.sort((a, b) => a.startedAt.localeCompare(b.startedAt)).map((item) => toWorkSessionDto(item, now));
+    return { workDate, state: deriveAttendanceState(sessions.find((item) => !item.endedAt)), sessions: dtos, workedMinutes: dtos.reduce((n, item) => n + (item.workedMinutes ?? 0), 0), breakMinutes: calculateGapMinutes(dtos) };
   }
-
-  private expectClockResult(result: StoredCommandResult): ClockCommandResponse {
-    if (result.kind !== "clock") {
-      throw conflict("Idempotency key was already used for a different command.");
-    }
-
-    return result.response;
+  private validateInterval(context: AttendanceMembershipContext, input: CreateWorkSessionRequest) {
+    if (Date.parse(input.endedAt) <= Date.parse(input.startedAt)) throw validationError("Das Ende muss nach dem Beginn liegen.", "endedAt");
+    if (localDateForInstant(input.startedAt, context.organizationTimeZone) !== input.workDate) throw validationError("Das Arbeitsdatum muss zum Beginn passen.", "workDate");
   }
-
-  private expectCorrectionResult(result: StoredCommandResult): CorrectionRequestDto {
-    if (result.kind !== "correction") {
-      throw conflict("Idempotency key was already used for a different command.");
-    }
-
-    return result.response;
+  private async ensureNoOverlap(context: AttendanceMembershipContext, candidate: WorkSessionRecord, ignoredId?: UUID) {
+    const sessions = await this.dependencies.repository.listSessions(context.organizationId, context.membershipId, candidate.workDate, candidate.workDate);
+    const start = Date.parse(candidate.startedAt), end = candidate.endedAt ? Date.parse(candidate.endedAt) : Infinity;
+    if (sessions.some((item) => item.id !== ignoredId && start < (item.endedAt ? Date.parse(item.endedAt) : Infinity) && Date.parse(item.startedAt) < end)) throw conflict("Arbeitsintervalle dürfen sich nicht überschneiden.", "startedAt");
   }
-}
-
-function buildSyntheticCorrectionBreaks(
-  session: WorkSessionRecord,
-  correctedStartedAt: string,
-  breakMinutes: number,
-  breakId: UUID,
-): WorkBreakRecord[] {
-  if (breakMinutes === 0) {
-    return [];
-  }
-
-  const startedAt = correctedStartedAt;
-  const endedAt = new Date(Date.parse(startedAt) + breakMinutes * 60_000).toISOString();
-
-  return [
-    {
-      id: breakId,
-      organizationId: session.organizationId,
-      workSessionId: session.id,
-      startedAt,
-      endedAt,
-      durationMinutes: breakMinutes,
-    },
-  ];
+  private async requireOwnSession(context: AttendanceMembershipContext, id: UUID) { const item = await this.dependencies.repository.findSession(context.organizationId, context.membershipId, id); if (!item) throw validationError("Der eigene Arbeitszeiteintrag wurde nicht gefunden.", "sessionId"); return item; }
+  private assertOpen(context: AttendanceMembershipContext, workDate: ISODate, operation: "clock" | "manual") { return this.dependencies.periodGuard.assertPeriodOpen({ organizationId: context.organizationId, membershipId: context.membershipId, workDate, operation }); }
+  private audit(context: AttendanceMembershipContext, requestId: UUID, action: string, entity: WorkSessionRecord, beforeValues?: unknown, afterValues?: unknown) { return this.dependencies.repository.appendAuditEvent({ id: this.dependencies.ids.uuid(), organizationId: context.organizationId, actorUserId: context.userId, actorMembershipId: context.membershipId, action, entityType: "work_session", entityId: entity.id, occurredAt: toIsoInstant(this.dependencies.clock.now()), requestId, beforeValues, afterValues }); }
+  private transaction<T>(fn: () => Promise<T>) { return this.dependencies.repository.transaction ? this.dependencies.repository.transaction(fn) : fn(); }
 }

@@ -6,7 +6,7 @@ Last updated: 2026-07-16
 
 ## 1. Purpose
 
-TeamZeit is a multi-tenant workforce application for small and medium-sized organisations. The first product slice is trustworthy time tracking with employee self-service and manager approval. Absence management, scheduling, documents, and dashboards build on the same organisation and permission model.
+TeamZeit is a multi-tenant workforce application for small and medium-sized organisations. The first product slice is trustworthy time tracking with direct employee self-service. Absence management, scheduling, documents, and dashboards build on the same organisation and permission model.
 
 The working product name is **TeamZeit**. Organisation names, logos, and themes are tenant data and must never be hard-coded into the application.
 
@@ -14,7 +14,7 @@ The working product name is **TeamZeit**. Organisation names, logos, and themes 
 
 1. **Tenant isolation first.** Every business record belongs to exactly one organisation (`organization_id`). Database Row Level Security (RLS) is the final isolation boundary.
 2. **Server-authoritative time and permissions.** Clock events, approvals, month closing, audit entries, and privileged changes execute through server-side commands. The browser is not trusted.
-3. **Append history; do not erase it.** Corrections and approvals preserve the original attendance record. Security-relevant operations create immutable audit events.
+3. **Audit direct changes.** Employees may immediately maintain their own attendance intervals. Mutations preserve an immutable audit trail without approval.
 4. **Stable contracts between modules.** Modules communicate through IDs, shared types, and versioned API contracts, not by importing another module's implementation.
 5. **One owner per concept.** Each table, API route, and shared type has one owning module.
 6. **Mobile-first PWA, accessible desktop administration.** The employee flow must remain usable on a phone; manager views must also work on larger screens.
@@ -106,8 +106,8 @@ This foundation intentionally does not create application modules under `apps/` 
 
 The following operations are atomic server-side transactions:
 
-- clock in, start/end break, and clock out;
-- submit/approve/reject a correction;
+- clock in and clock out;
+- create, update, and archive an employee's own interval;
 - submit/approve/reject an absence request;
 - close or reopen a month;
 - invite or deactivate a member;
@@ -167,7 +167,7 @@ Accepted for the foundation:
 - multi-tenant from the first migration;
 - Supabase Auth/PostgreSQL/Storage;
 - REST/JSON API with explicit commands;
-- immutable correction and audit history;
+- immediate employee self-service with immutable audit history;
 - organisation-configured local time zone.
 
 Deferred until implementation planning:

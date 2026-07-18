@@ -1,7 +1,6 @@
 import type {
   AuditEventRecord,
   ClockEventRecord,
-  CorrectionRecord,
   StoredCommandResult,
   TimeTrackingRepository,
   WorkSessionRecord,
@@ -14,7 +13,6 @@ function clone<T>(value: T): T {
 export class InMemoryTimeTrackingRepository implements TimeTrackingRepository {
   public readonly sessions = new Map<string, WorkSessionRecord>();
   public readonly clockEvents: ClockEventRecord[] = [];
-  public readonly corrections = new Map<string, CorrectionRecord>();
   public readonly auditEvents: AuditEventRecord[] = [];
   private readonly idempotency = new Map<string, StoredCommandResult>();
 
@@ -88,19 +86,6 @@ export class InMemoryTimeTrackingRepository implements TimeTrackingRepository {
 
   public async appendClockEvent(event: ClockEventRecord): Promise<void> {
     this.clockEvents.push(clone(event));
-  }
-
-  public async insertCorrection(correction: CorrectionRecord): Promise<void> {
-    this.corrections.set(correction.id, clone(correction));
-  }
-
-  public async findCorrection(organizationId: string, correctionId: string): Promise<CorrectionRecord | undefined> {
-    const correction = this.corrections.get(correctionId);
-    return correction?.organizationId === organizationId ? clone(correction) : undefined;
-  }
-
-  public async updateCorrection(correction: CorrectionRecord): Promise<void> {
-    this.corrections.set(correction.id, clone(correction));
   }
 
   public async appendAuditEvent(event: AuditEventRecord): Promise<void> {

@@ -6,8 +6,7 @@ The table defines ownership boundaries, not an implementation schedule.
 |---|---|---|---|---|
 | Identity & Tenancy | organisations, profiles, invitations, memberships, active tenant | `organizations`, `profiles`, `memberships`, `invitations` | current context, member administration | Yes |
 | Organisation Structure | locations, teams/groups, manager scope | `locations`, `teams`, `team_members`, `manager_scopes` | structure queries and assignments | Yes |
-| Time Tracking | clock events, work sessions, breaks, daily totals | `work_sessions`, `work_breaks`, `clock_events` | clock commands, own/month views | Yes |
-| Corrections & Approval | correction requests, approval workflow, immutable change history | `correction_requests` | submit/review correction | Yes |
+| Time Tracking | clock events, work intervals, derived breaks, direct self-service, daily totals | `work_sessions`, `clock_events`; legacy `work_breaks`/`correction_requests` are historical | clock commands, own interval CRUD, own/month views | Yes |
 | Month Closing | lock periods and prevent later mutation | `month_closures` | close/reopen/status | Yes |
 | Absence | leave balances, leave/sickness requests, attachments | future module migrations | absence request/review | Later |
 | Scheduling | shifts, staffing requirements, replacements | future module migrations | schedules and coverage | Later |
@@ -19,7 +18,7 @@ The table defines ownership boundaries, not an implementation schedule.
 ## Module interaction examples
 
 - Time Tracking asks Identity & Tenancy for the authenticated membership context; it does not query UI session state.
-- Corrections owns the approval workflow and calls a Time Tracking application service to apply an approved correction transactionally.
+- Time Tracking applies validated own-interval changes immediately and emits audit events.
 - Month Closing exposes `assertPeriodOpen`. Time Tracking and Corrections call it before mutation.
 - Reporting reads authorised module projections; it does not become the owner of source records.
 - Scheduling may compare planned shifts to Time Tracking sessions through public read models, never by mutating attendance.

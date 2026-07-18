@@ -1,8 +1,7 @@
 import type { ISODate, ISOInstant, UUID } from "./common";
 
-export type AttendanceState = "not_started" | "working" | "on_break" | "completed";
-export type WorkSessionSource = "clock" | "approved_correction" | "admin_import";
-export type CorrectionStatus = "pending" | "approved" | "rejected" | "cancelled";
+export type AttendanceState = "not_started" | "working";
+export type WorkSessionSource = "clock" | "manual" | "admin_import";
 
 export interface WorkBreakDto {
   id: UUID;
@@ -27,8 +26,12 @@ export interface WorkSessionDto {
 
 export interface TodayAttendanceResponse {
   serverTime: ISOInstant;
+  workDate: ISODate;
   state: AttendanceState;
   activeSession?: WorkSessionDto;
+  sessions: WorkSessionDto[];
+  workedMinutes: number;
+  breakMinutes: number;
 }
 
 export interface WorkSessionsResponse {
@@ -55,36 +58,12 @@ export interface MonthlyAttendanceOverview {
   breakMinutes: number;
 }
 
-export interface CorrectionValues {
+export interface CreateWorkSessionRequest {
   workDate: ISODate;
   startedAt: ISOInstant;
   endedAt: ISOInstant;
-  breakMinutes: number;
 }
 
-export interface CreateCorrectionRequest {
-  sessionId: UUID;
+export interface UpdateWorkSessionRequest extends CreateWorkSessionRequest {
   expectedVersion: number;
-  proposed: CorrectionValues;
-  reason: string;
-}
-
-export interface CorrectionRequestDto {
-  id: UUID;
-  organizationId: UUID;
-  requesterMembershipId: UUID;
-  sessionId: UUID;
-  original: CorrectionValues;
-  proposed: CorrectionValues;
-  reason: string;
-  status: CorrectionStatus;
-  reviewedByMembershipId?: UUID;
-  reviewComment?: string;
-  createdAt: ISOInstant;
-  reviewedAt?: ISOInstant;
-}
-
-export interface ReviewCorrectionRequest {
-  decision: "approve" | "reject";
-  comment?: string;
 }

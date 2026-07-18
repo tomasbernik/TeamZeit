@@ -6,7 +6,6 @@ import { TimeTrackingError, conflict } from "./errors.js";
 import type {
   AuditEventRecord,
   ClockEventRecord,
-  CorrectionRecord,
   StoredCommandResult,
   TimeTrackingRepository,
   WorkBreakRecord,
@@ -48,34 +47,16 @@ interface WorkSessionRow {
   work_date: string;
   started_at: string;
   ended_at: string | null;
-  source: "clock" | "approved_correction" | "admin_import";
+  source: "clock" | "manual" | "admin_import";
   version: number;
+  archived_at: string | null;
   work_breaks?: WorkBreakRow[] | null;
-}
-
-interface CorrectionRow {
-  id: string;
-  organization_id: string;
-  requester_membership_id: string;
-  work_session_id: string;
-  original_values: CorrectionRecord["original"];
-  proposed_values: CorrectionRecord["proposed"];
-  reason: string;
-  status: CorrectionRecord["status"];
-  reviewed_by_membership_id: string | null;
-  review_comment: string | null;
-  created_at: string;
-  reviewed_at: string | null;
-  version: number;
-  expected_session_version: number;
 }
 
 type WriteOperation =
   | { type: "insert_session"; session: WorkSessionRecord }
   | { type: "update_session"; session: WorkSessionRecord }
   | { type: "append_clock_event"; event: ClockEventRecord }
-  | { type: "insert_correction"; correction: CorrectionRecord }
-  | { type: "update_correction"; correction: CorrectionRecord }
   | { type: "append_audit_event"; event: AuditEventRecord }
   | {
       type: "save_idempotent_result";
@@ -90,10 +71,7 @@ interface TransactionState {
 }
 
 const sessionColumns =
-  "id, organization_id, membership_id, work_date, started_at, ended_at, source, version, work_breaks(id, organization_id, work_session_id, started_at, ended_at)";
-
-const correctionColumns =
-  "id, organization_id, requester_membership_id, work_session_id, original_values, proposed_values, reason, status, reviewed_by_membership_id, review_comment, created_at, reviewed_at, version, expected_session_version";
+  "id, organization_id, membership_id, work_date, started_at, ended_at, source, version, archived_at, work_breaks(id, organization_id, work_session_id, started_at, ended_at)";
 
 export class PostgresTimeTrackingRepository implements TimeTrackingRepository {
   private readonly client: RpcClient;
@@ -164,6 +142,7 @@ export class PostgresTimeTrackingRepository implements TimeTrackingRepository {
       .eq("organization_id", organizationId)
       .eq("membership_id", membershipId)
       .eq("id", sessionId)
+      .is("archived_at", null)
       .maybeSingle();
 
     this.assertNoError(result, "Work session could not be loaded.");
@@ -177,6 +156,7 @@ export class PostgresTimeTrackingRepository implements TimeTrackingRepository {
       .eq("membership_id", membershipId)
       .gte("work_date", from)
       .lte("work_date", to)
+      .is("archived_at", null)
       .order("started_at", { ascending: true })
       .order("started_at", { ascending: true, foreignTable: "work_breaks" });
 
@@ -196,24 +176,6 @@ export class PostgresTimeTrackingRepository implements TimeTrackingRepository {
     await this.enqueueOrExecute({ type: "append_clock_event", event });
   }
 
-  public async insertCorrection(correction: CorrectionRecord): Promise<void> {
-    await this.enqueueOrExecute({ type: "insert_correction", correction });
-  }
-
-  public async findCorrection(organizationId: string, correctionId: string): Promise<CorrectionRecord | undefined> {
-    const result = await this.query<CorrectionRow>("correction_requests")
-      .select(correctionColumns)
-      .eq("organization_id", organizationId)
-      .eq("id", correctionId)
-      .maybeSingle();
-
-    this.assertNoError(result, "Correction request could not be loaded.");
-    return result.data ? mapCorrection(result.data) : undefined;
-  }
-
-  public async updateCorrection(correction: CorrectionRecord): Promise<void> {
-    await this.enqueueOrExecute({ type: "update_correction", correction });
-  }
 
   public async appendAuditEvent(event: AuditEventRecord): Promise<void> {
     await this.enqueueOrExecute({ type: "append_audit_event", event });
@@ -235,7 +197,7 @@ export class PostgresTimeTrackingRepository implements TimeTrackingRepository {
   }
 
   private async executeOperations(operations: WriteOperation[]): Promise<void> {
-    const result = await this.client.rpc("time_tracking_apply_operations", {
+    const result = await this.client.rpc("time_tracking_apply_interval_operations", {
       operations: operations.map(serializeOperation),
     });
 
@@ -262,7 +224,7 @@ export class PostgresPeriodGuard {
     organizationId: string;
     membershipId: string;
     workDate: string;
-    operation: "clock" | "correction";
+    operation: "clock" | "manual" | "correction";
   }): Promise<void> {
     const result = await this.client.rpc("time_tracking_assert_period_open", {
       target_organization_id: input.organizationId,
@@ -287,6 +249,7 @@ function mapSession(row: WorkSessionRow): WorkSessionRecord {
     ...(row.ended_at ? { endedAt: row.ended_at } : {}),
     source: row.source,
     version: row.version,
+    ...(row.archived_at ? { archivedAt: row.archived_at } : {}),
     breaks: (row.work_breaks ?? []).map(mapBreak).sort((left, right) => left.startedAt.localeCompare(right.startedAt)),
   };
 }
@@ -298,24 +261,6 @@ function mapBreak(row: WorkBreakRow): WorkBreakRecord {
     workSessionId: row.work_session_id,
     startedAt: row.started_at,
     ...(row.ended_at ? { endedAt: row.ended_at } : {}),
-  };
-}
-
-function mapCorrection(row: CorrectionRow): CorrectionRecord {
-  return {
-    id: row.id,
-    organizationId: row.organization_id,
-    requesterMembershipId: row.requester_membership_id,
-    sessionId: row.work_session_id,
-    original: row.original_values,
-    proposed: row.proposed_values,
-    reason: row.reason,
-    status: row.status,
-    ...(row.reviewed_by_membership_id ? { reviewedByMembershipId: row.reviewed_by_membership_id } : {}),
-    ...(row.review_comment ? { reviewComment: row.review_comment } : {}),
-    createdAt: row.created_at,
-    ...(row.reviewed_at ? { reviewedAt: row.reviewed_at } : {}),
-    expectedVersion: row.expected_session_version,
   };
 }
 

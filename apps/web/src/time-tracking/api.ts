@@ -1,15 +1,17 @@
 import type {
   ClockCommandResponse,
-  CreateCorrectionRequest,
+  CreateWorkSessionRequest,
   DailyAttendanceOverview,
   MonthlyAttendanceOverview,
   TodayAttendanceResponse,
+  UpdateWorkSessionRequest,
+  WorkSessionDto,
 } from "@teamzeit/contracts";
 
 import { errorMessageFromResponse } from "../auth/api";
 import { webConfig } from "../config/env";
 
-export type ClockCommand = "clock-in" | "break-start" | "break-end" | "clock-out";
+export type ClockCommand = "clock-in" | "clock-out";
 
 interface AttendanceRequestContext {
   accessToken: string;
@@ -19,8 +21,6 @@ interface AttendanceRequestContext {
 
 const commandLabels: Record<ClockCommand, string> = {
   "clock-in": "Der Arbeitsbeginn konnte nicht erfasst werden.",
-  "break-start": "Die Pause konnte nicht gestartet werden.",
-  "break-end": "Die Pause konnte nicht beendet werden.",
   "clock-out": "Das Arbeitsende konnte nicht erfasst werden.",
 };
 
@@ -79,12 +79,12 @@ export async function sendClockCommand(
   return readJson<ClockCommandResponse>(response, commandLabels[command]);
 }
 
-export async function createCorrectionRequest(
+export async function createWorkSession(
   context: AttendanceRequestContext,
-  request: CreateCorrectionRequest,
+  request: CreateWorkSessionRequest,
   idempotencyKey: string,
-): Promise<void> {
-  const response = await (context.fetcher ?? fetch)(apiUrl("/corrections"), {
+): Promise<WorkSessionDto> {
+  const response = await (context.fetcher ?? fetch)(apiUrl("/attendance/sessions"), {
     method: "POST",
     headers: {
       ...readHeaders(context),
@@ -94,5 +94,15 @@ export async function createCorrectionRequest(
     body: JSON.stringify(request),
   });
 
-  await readJson(response, "Die Korrekturanfrage konnte nicht gesendet werden.");
+  return readJson<WorkSessionDto>(response, "Der Arbeitszeitraum konnte nicht hinzugefügt werden.");
+}
+
+export async function updateWorkSession(context: AttendanceRequestContext, sessionId: string, request: UpdateWorkSessionRequest, idempotencyKey: string): Promise<WorkSessionDto> {
+  const response = await (context.fetcher ?? fetch)(apiUrl(`/attendance/sessions/${sessionId}`), { method: "PUT", headers: { ...readHeaders(context), "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(request) });
+  return readJson<WorkSessionDto>(response, "Der Arbeitszeitraum konnte nicht geändert werden.");
+}
+
+export async function deleteWorkSession(context: AttendanceRequestContext, session: Pick<WorkSessionDto, "id" | "version">, idempotencyKey: string): Promise<WorkSessionDto> {
+  const response = await (context.fetcher ?? fetch)(apiUrl(`/attendance/sessions/${session.id}?expectedVersion=${session.version}`), { method: "DELETE", headers: { ...readHeaders(context), "Idempotency-Key": idempotencyKey } });
+  return readJson<WorkSessionDto>(response, "Der Arbeitszeitraum konnte nicht gelöscht werden.");
 }

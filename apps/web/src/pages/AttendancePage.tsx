@@ -1,405 +1,91 @@
-import type {
-  AttendanceState,
-  CreateCorrectionRequest,
-  DailyAttendanceOverview,
-  MonthlyAttendanceOverview,
-  WorkSessionDto,
-} from "@teamzeit/contracts";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-
+import type { DailyAttendanceOverview, MonthlyAttendanceOverview, TodayAttendanceResponse, WorkSessionDto } from "@teamzeit/contracts";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
-import {
-  createCorrectionRequest,
-  fetchDailyAttendance,
-  fetchMonthlyAttendance,
-  fetchTodayAttendance,
-  sendClockCommand,
-  type ClockCommand,
-} from "../time-tracking/api";
+import { createWorkSession, deleteWorkSession, fetchDailyAttendance, fetchMonthlyAttendance, fetchTodayAttendance, sendClockCommand, updateWorkSession, type ClockCommand } from "../time-tracking/api";
 
-const stateLabels: Record<AttendanceState, string> = {
-  not_started: "Nicht gestartet",
-  working: "Arbeitszeit läuft",
-  on_break: "Pause läuft",
-  completed: "Abgeschlossen",
-};
-
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function currentMonth(): string {
-  return todayIsoDate().slice(0, 7);
-}
-
-function formatTime(value?: string): string {
-  if (!value) return "-";
-  return new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
-}
-
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(`${value}T00:00:00`));
-}
-
-function formatMinutes(minutes: number | undefined): string {
-  const total = minutes ?? 0;
-  const hours = Math.floor(total / 60);
-  const rest = total % 60;
-  return `${hours} h ${rest.toString().padStart(2, "0")} min`;
-}
-
-function localDateTimeValue(value?: string): string {
-  if (!value) return "";
-  const date = new Date(value);
-  const offset = date.getTimezoneOffset() * 60000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-}
-
-function toIsoInstant(value: string): string {
-  return new Date(value).toISOString();
-}
-
-function breakMinutes(session: WorkSessionDto | undefined): number {
-  return session?.breaks.reduce((total, item) => total + (item.durationMinutes ?? 0), 0) ?? 0;
-}
-
-function firstSession(overview: DailyAttendanceOverview | null, activeSession: WorkSessionDto | undefined): WorkSessionDto | undefined {
-  return activeSession ?? overview?.sessions[0];
-}
-
-function isNetworkError(error: unknown): boolean {
-  return error instanceof TypeError;
-}
-
-function messageFromError(error: unknown, fallback: string): string {
-  if (isNetworkError(error)) return "Die Verbindung zum Server wurde unterbrochen. Bitte versuche es erneut.";
-  return error instanceof Error ? error.message : fallback;
-}
-
-function operationKey(): string {
-  return crypto.randomUUID();
-}
-
-function EmptyState({ children }: { children: string }) {
-  return (
-    <div className="empty-state compact-empty">
-      <span aria-hidden="true">○</span>
-      <p>{children}</p>
-    </div>
-  );
-}
+const dateToday = () => new Date().toISOString().slice(0, 10);
+const monthToday = () => dateToday().slice(0, 7);
+const key = () => crypto.randomUUID();
+const time = (value?: string) => value ? new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "–";
+const dateTimeInput = (value?: string) => { if (!value) return ""; const date = new Date(value); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16); };
+const duration = (minutes = 0) => `${Math.floor(minutes / 60)} h ${(minutes % 60).toString().padStart(2, "0")} min`;
+const message = (error: unknown, fallback: string) => error instanceof TypeError ? "Die Verbindung zum Server wurde unterbrochen. Bitte versuche es erneut." : error instanceof Error ? error.message : fallback;
 
 export function AttendancePage({ todayOnly = false }: { todayOnly?: boolean } = {}) {
   const { activeMembership, session } = useAuth();
-  const [today, setToday] = useState<{ serverTime: string; state: AttendanceState; activeSession?: WorkSessionDto } | null>(null);
+  const [today, setToday] = useState<TodayAttendanceResponse | null>(null);
   const [daily, setDaily] = useState<DailyAttendanceOverview | null>(null);
   const [monthly, setMonthly] = useState<MonthlyAttendanceOverview | null>(null);
-  const [selectedDate, setSelectedDate] = useState(todayIsoDate);
-  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
-  const [loading, setLoading] = useState(true);
-  const [commandPending, setCommandPending] = useState<string | null>(null);
-  const [correctionPending, setCorrectionPending] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(dateToday);
+  const [selectedMonth, setSelectedMonth] = useState(monthToday);
+  const [editing, setEditing] = useState<WorkSessionDto | "new" | null>(null);
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [dataKey, setDataKey] = useState<string | null>(null);
-  const latestLoadRef = useRef(0);
-  const pendingCommandRef = useRef<ClockCommand | null>(null);
-  const commandKeysRef = useRef<Partial<Record<ClockCommand, string>>>({});
-  const pendingCorrectionRef = useRef(false);
-  const correctionOperationRef = useRef<{ signature: string; key: string } | null>(null);
-
-  const requestContext = useMemo(() => {
-    if (!session || !activeMembership) return null;
-    return { accessToken: session.access_token, organizationId: activeMembership.organization.id };
-  }, [activeMembership, session]);
-  const loadKey = requestContext
-    ? `${requestContext.accessToken}:${requestContext.organizationId}${todayOnly ? ":today" : `:${selectedDate}:${selectedMonth}`}`
-    : null;
-
-  const loadAttendance = useCallback(async (showLoading = true) => {
-    if (!requestContext || !loadKey) return;
-
-    const loadId = latestLoadRef.current + 1;
-    latestLoadRef.current = loadId;
-    if (showLoading) setLoading(true);
-    setError(null);
-    try {
-      let todayResult;
-      let dailyResult: DailyAttendanceOverview | null = null;
-      let monthlyResult: MonthlyAttendanceOverview | null = null;
-
-      if (todayOnly) {
-        todayResult = await fetchTodayAttendance(requestContext);
-      } else {
-        [todayResult, dailyResult, monthlyResult] = await Promise.all([
-          fetchTodayAttendance(requestContext),
-          fetchDailyAttendance(requestContext, selectedDate),
-          fetchMonthlyAttendance(requestContext, selectedMonth),
-        ]);
-      }
-      if (latestLoadRef.current !== loadId) return;
-      setToday(todayResult);
-      setDaily(dailyResult);
-      setMonthly(monthlyResult);
-      setDataKey(loadKey);
-    } catch (loadError) {
-      if (latestLoadRef.current !== loadId) return;
-      setError(messageFromError(loadError, "Die Zeiterfassung konnte nicht geladen werden."));
-    } finally {
-      if (showLoading && latestLoadRef.current === loadId) setLoading(false);
-    }
-  }, [loadKey, requestContext, selectedDate, selectedMonth, todayOnly]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadAttendance();
-    }, 0);
-
-    return () => window.clearTimeout(timer);
-  }, [loadAttendance]);
-
-  const visibleToday = dataKey === loadKey ? today : null;
-  const visibleDaily = dataKey === loadKey ? daily : null;
-  const visibleMonthly = dataKey === loadKey ? monthly : null;
-  const isLoading = loading || (dataKey !== loadKey && !error);
-  const state = visibleToday?.state ?? "not_started";
-  const selectedSession = firstSession(visibleDaily, visibleToday?.activeSession);
+  const commandKey = useRef<string | null>(null);
+  const context = useMemo(() => session && activeMembership ? { accessToken: session.access_token, organizationId: activeMembership.organization.id } : null, [session, activeMembership]);
   const canWrite = activeMembership?.role !== "auditor";
-  const commands = [
-    { key: "clock-in", label: "Príchod", enabled: state === "not_started" },
-    { key: "break-start", label: "Začať prestávku", enabled: state === "working" },
-    { key: "break-end", label: "Ukončiť prestávku", enabled: state === "on_break" },
-    { key: "clock-out", label: "Odchod", enabled: state === "working" },
-  ] as const;
 
-  async function runCommand(command: ClockCommand) {
-    if (!requestContext || pendingCommandRef.current) return;
-
-    pendingCommandRef.current = command;
-    setCommandPending(command);
-    setError(null);
-    setSuccess(null);
-    const key = commandKeysRef.current[command] ?? operationKey();
-    commandKeysRef.current[command] = key;
+  const load = useCallback(async () => {
+    if (!context) return;
     try {
-      const result = await sendClockCommand(requestContext, command, key);
-      delete commandKeysRef.current[command];
-      setToday({ serverTime: result.serverTime, state: result.session.state, activeSession: result.session });
-      setDataKey(loadKey);
-      setSuccess("Arbeitszeit wurde aktualisiert.");
-      void loadAttendance(false);
-    } catch (commandError) {
-      if (!isNetworkError(commandError)) delete commandKeysRef.current[command];
-      setError(messageFromError(commandError, "Die Aktion konnte nicht ausgeführt werden."));
-    } finally {
-      pendingCommandRef.current = null;
-      setCommandPending(null);
-    }
+      const current = await fetchTodayAttendance(context); setToday(current);
+      if (!todayOnly) {
+        const [day, month] = await Promise.all([fetchDailyAttendance(context, selectedDate), fetchMonthlyAttendance(context, selectedMonth)]);
+        setDaily(day); setMonthly(month);
+      }
+    } catch (cause) { setError(message(cause, "Die Zeiterfassung konnte nicht geladen werden.")); }
+  }, [context, selectedDate, selectedMonth, todayOnly]);
+  useEffect(() => { const timer = window.setTimeout(() => { void load(); }, 0); return () => window.clearTimeout(timer); }, [load]);
+
+  async function clock(command: ClockCommand) {
+    if (!context || pending) return;
+    setPending(true); setError(null); setSuccess(null); commandKey.current ??= key();
+    try { await sendClockCommand(context, command, commandKey.current); commandKey.current = null; setSuccess(command === "clock-in" ? "Eingestempelt." : "Ausgestempelt."); await load(); }
+    catch (cause) { if (!(cause instanceof TypeError)) commandKey.current = null; setError(message(cause, "Die Aktion konnte nicht ausgeführt werden.")); }
+    finally { setPending(false); }
   }
 
-  async function submitCorrection(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!requestContext || !selectedSession || pendingCorrectionRef.current) return;
-
-    pendingCorrectionRef.current = true;
-    const data = new FormData(event.currentTarget);
-    const startedAt = String(data.get("startedAt") ?? "");
-    const endedAt = String(data.get("endedAt") ?? "");
-    const reason = String(data.get("reason") ?? "").trim();
-    const breakMinutesValue = Number(data.get("breakMinutes") ?? 0);
-
-    const request: CreateCorrectionRequest = {
-      sessionId: selectedSession.id,
-      expectedVersion: selectedSession.version,
-      proposed: {
-        workDate: selectedSession.workDate,
-        startedAt: toIsoInstant(startedAt),
-        endedAt: toIsoInstant(endedAt),
-        breakMinutes: breakMinutesValue,
-      },
-      reason,
-    };
-    const signature = JSON.stringify(request);
-    const existingOperation = correctionOperationRef.current?.signature === signature ? correctionOperationRef.current : null;
-    const operation = existingOperation ?? { signature, key: operationKey() };
-    correctionOperationRef.current = operation;
-
-    setCorrectionPending(true);
-    setError(null);
-    setSuccess(null);
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!context || !editing || pending) return;
+    const data = new FormData(event.currentTarget); const startedAt = new Date(String(data.get("startedAt"))).toISOString(); const endedAt = new Date(String(data.get("endedAt"))).toISOString();
+    const workDate = String(data.get("workDate")); setPending(true); setError(null); setSuccess(null);
     try {
-      await createCorrectionRequest(requestContext, request, operation.key);
-      correctionOperationRef.current = null;
-      setSuccess("Korrekturanfrage wurde gesendet.");
-      event.currentTarget.reset();
-    } catch (correctionError) {
-      if (!isNetworkError(correctionError)) correctionOperationRef.current = null;
-      setError(messageFromError(correctionError, "Die Korrekturanfrage konnte nicht gesendet werden."));
-    } finally {
-      pendingCorrectionRef.current = false;
-      setCorrectionPending(false);
-    }
+      if (editing === "new") await createWorkSession(context, { workDate, startedAt, endedAt }, key());
+      else await updateWorkSession(context, editing.id, { workDate, startedAt, endedAt, expectedVersion: editing.version }, key());
+      setEditing(null); setSuccess("Arbeitszeit wurde sofort gespeichert."); await load();
+    } catch (cause) { setError(message(cause, "Der Arbeitszeitraum konnte nicht gespeichert werden.")); }
+    finally { setPending(false); }
   }
 
-  return (
-    <section className={`attendance-page${todayOnly ? " today-page" : ""}`} aria-labelledby="attendance-title">
-      <div className="page-heading">
-        <p className="eyebrow">{todayOnly ? "Übersicht" : "Arbeitszeit"}</p>
-        <h1 id="attendance-title">{todayOnly ? "Heute" : "Dochádzka"}</h1>
-        <p className="page-intro">
-          {todayOnly ? "Erfasse deinen Arbeitstag direkt nach der Anmeldung." : "Erfasse deinen Arbeitstag und prüfe Tages- und Monatswerte."}
-        </p>
-      </div>
+  async function remove(item: WorkSessionDto) {
+    if (!context || pending || !window.confirm("Arbeitszeitraum wirklich löschen?")) return;
+    setPending(true); setError(null);
+    try { await deleteWorkSession(context, item, key()); setSuccess("Arbeitszeitraum wurde gelöscht."); if (editing !== "new" && editing?.id === item.id) setEditing(null); await load(); }
+    catch (cause) { setError(message(cause, "Der Arbeitszeitraum konnte nicht gelöscht werden.")); }
+    finally { setPending(false); }
+  }
 
-      {error && <p className="error-note" role="alert">{error}</p>}
-      {success && <p className="success-note">{success}</p>}
-
-      <div className="attendance-grid">
-        <section className="panel workday-panel" aria-busy={isLoading}>
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Heute</p>
-              <h2>Aktueller Status</h2>
-            </div>
-            <span className={`state-pill state-${state}`}>{stateLabels[state]}</span>
-          </div>
-
-          {isLoading ? (
-            <EmptyState>Arbeitsstand wird geladen.</EmptyState>
-          ) : (
-            <>
-              <dl className="metric-grid">
-                <div>
-                  <dt>Beginn</dt>
-                  <dd>{formatTime(visibleToday?.activeSession?.startedAt)}</dd>
-                </div>
-                <div>
-                  <dt>Ende</dt>
-                  <dd>{formatTime(visibleToday?.activeSession?.endedAt)}</dd>
-                </div>
-                <div>
-                  <dt>Arbeitszeit</dt>
-                  <dd>{formatMinutes(visibleToday?.activeSession?.workedMinutes)}</dd>
-                </div>
-                <div>
-                  <dt>Pausen</dt>
-                  <dd>{formatMinutes(breakMinutes(visibleToday?.activeSession))}</dd>
-                </div>
-              </dl>
-
-              <div className="command-grid">
-                {commands.map((command) => (
-                  <button
-                    key={command.key}
-                    className="primary-button command-button"
-                    type="button"
-                    disabled={!canWrite || !command.enabled || Boolean(commandPending)}
-                    onClick={() => void runCommand(command.key)}
-                  >
-                    {commandPending === command.key ? "Wird gesendet." : command.label}
-                  </button>
-                ))}
-              </div>
-              {state === "not_started" && <p className="hint-text">Heute wurde noch keine Arbeitszeit erfasst.</p>}
-              {!canWrite && <p className="hint-text">Auditoren können Arbeitszeiten nur lesen.</p>}
-            </>
-          )}
-        </section>
-
-        {!todayOnly && <section className="panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Tag</p>
-              <h2>Tagesüberblick</h2>
-            </div>
-            <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
-          </div>
-          {isLoading ? (
-            <EmptyState>Tageswerte werden geladen.</EmptyState>
-          ) : visibleDaily && visibleDaily.sessions.length > 0 ? (
-            <div className="overview-list">
-              <div className="summary-row">
-                <strong>{formatDate(visibleDaily.workDate)}</strong>
-                <span>{formatMinutes(visibleDaily.workedMinutes)} Arbeitszeit</span>
-                <span>{formatMinutes(visibleDaily.breakMinutes)} Pause</span>
-              </div>
-              {visibleDaily.sessions.map((item) => (
-                <article className="session-row" key={item.id}>
-                  <span>{formatTime(item.startedAt)} - {formatTime(item.endedAt)}</span>
-                  <strong>{stateLabels[item.state]}</strong>
-                  <small>Version {item.version}</small>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <EmptyState>Für diesen Tag gibt es noch keine Einträge.</EmptyState>
-          )}
-        </section>}
-
-        {!todayOnly && <section className="panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Monat</p>
-              <h2>Monatsüberblick</h2>
-            </div>
-            <input type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} />
-          </div>
-          {isLoading ? (
-            <EmptyState>Monatswerte werden geladen.</EmptyState>
-          ) : visibleMonthly && visibleMonthly.days.length > 0 ? (
-            <div className="overview-list">
-              <div className="summary-row">
-                <strong>{visibleMonthly.month}</strong>
-                <span>{formatMinutes(visibleMonthly.workedMinutes)} Arbeitszeit</span>
-                <span>{formatMinutes(visibleMonthly.breakMinutes)} Pause</span>
-              </div>
-              {visibleMonthly.days.map((day) => (
-                <article className="session-row" key={day.workDate}>
-                  <span>{formatDate(day.workDate)}</span>
-                  <strong>{formatMinutes(day.workedMinutes)}</strong>
-                  <small>{stateLabels[day.state]}</small>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <EmptyState>Für diesen Monat gibt es noch keine freigegebenen Tageswerte.</EmptyState>
-          )}
-        </section>}
-
-        {!todayOnly && <section className="panel correction-panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Korrektur</p>
-              <h2>Änderung beantragen</h2>
-            </div>
-          </div>
-          {selectedSession ? (
-            <form className="correction-form" onSubmit={(event) => void submitCorrection(event)}>
-              <label>
-                Arbeitsbeginn
-                <input name="startedAt" type="datetime-local" defaultValue={localDateTimeValue(selectedSession.startedAt)} required />
-              </label>
-              <label>
-                Arbeitsende
-                <input name="endedAt" type="datetime-local" defaultValue={localDateTimeValue(selectedSession.endedAt)} required />
-              </label>
-              <label>
-                Pausenminuten
-                <input name="breakMinutes" type="number" min="0" max="1440" defaultValue={breakMinutes(selectedSession)} required />
-              </label>
-              <label>
-                Begründung
-                <textarea name="reason" minLength={3} maxLength={1000} required />
-              </label>
-              <button className="secondary-button compact-button" type="submit" disabled={!canWrite || correctionPending}>
-                {correctionPending ? "Wird gesendet." : "Korrektur senden"}
-              </button>
-            </form>
-          ) : (
-            <EmptyState>Wähle einen Tag mit Arbeitszeit, um eine Korrektur anzufragen.</EmptyState>
-          )}
-        </section>}
-      </div>
-    </section>
-  );
+  const overview = todayOnly ? today : daily;
+  return <section className={`attendance-page${todayOnly ? " today-page" : ""}`} aria-labelledby="attendance-title">
+    <div className="page-heading"><p className="eyebrow">{todayOnly ? "Übersicht" : "Arbeitszeit"}</p><h1 id="attendance-title">{todayOnly ? "Heute" : "Zeiterfassung"}</h1><p className="page-intro">Arbeitsintervalle direkt erfassen und korrigieren.</p></div>
+    {error && <p className="error-note" role="alert">{error}</p>}{success && <p className="success-note">{success}</p>}
+    <div className="attendance-grid">
+      <section className="panel workday-panel"><div className="panel-header"><div><p className="eyebrow">Heute</p><h2>Aktueller Status</h2></div><span className={`state-pill state-${today?.state ?? "not_started"}`}>{today?.state === "working" ? "Eingestempelt" : "Ausgestempelt"}</span></div>
+        <div className="command-grid"><button className="primary-button command-button" disabled={!canWrite || pending} onClick={() => void clock(today?.state === "working" ? "clock-out" : "clock-in")}>{pending ? "Wird gesendet…" : today?.state === "working" ? "Ausstempeln" : "Einstempeln"}</button></div>
+      </section>
+      <section className="panel"><div className="panel-header"><div><p className="eyebrow">Intervalle</p><h2>{todayOnly ? "Heute" : "Tagesübersicht"}</h2></div>{!todayOnly && <input aria-label="Arbeitstag" type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />}</div>
+        <div className="summary-row"><span>{duration(overview?.workedMinutes)} Arbeitszeit</span><span>{duration(overview?.breakMinutes)} Pause</span></div>
+        <div className="overview-list">{(overview?.sessions ?? []).map((item) => <article className="session-row" key={item.id}><span>{time(item.startedAt)} – {time(item.endedAt)}</span><strong>{duration(item.workedMinutes)}</strong>{canWrite && item.endedAt && <span><button className="secondary-button compact-button" onClick={() => setEditing(item)}>Bearbeiten</button> <button className="secondary-button compact-button" onClick={() => void remove(item)}>Löschen</button></span>}</article>)}</div>
+        {canWrite && <button className="secondary-button compact-button" onClick={() => setEditing("new")}>Intervall hinzufügen</button>}
+      </section>
+      {editing && <section className="panel"><h2>{editing === "new" ? "Intervall hinzufügen" : "Intervall bearbeiten"}</h2><form className="correction-form" onSubmit={(event) => void save(event)}>
+        <label>Arbeitstag<input name="workDate" type="date" defaultValue={editing === "new" ? (todayOnly ? today?.workDate : selectedDate) : editing.workDate} required /></label>
+        <label>Beginn<input name="startedAt" type="datetime-local" defaultValue={editing === "new" ? "" : dateTimeInput(editing.startedAt)} required /></label>
+        <label>Ende<input name="endedAt" type="datetime-local" defaultValue={editing === "new" ? "" : dateTimeInput(editing.endedAt)} required /></label>
+        <button className="primary-button" disabled={pending}>Sofort speichern</button><button type="button" className="secondary-button" onClick={() => setEditing(null)}>Abbrechen</button>
+      </form></section>}
+      {!todayOnly && <section className="panel"><div className="panel-header"><h2>Monatsübersicht</h2><input aria-label="Monat" type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} /></div><div className="summary-row"><span>{duration(monthly?.workedMinutes)} Arbeitszeit</span><span>{duration(monthly?.breakMinutes)} Pause</span></div></section>}
+    </div>
+  </section>;
 }

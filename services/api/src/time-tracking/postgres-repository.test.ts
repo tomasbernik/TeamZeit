@@ -123,7 +123,7 @@ describe("PostgresTimeTrackingRepository", () => {
     });
 
     expect(client.rpcCalls).toHaveLength(1);
-    expect(client.rpcCalls[0]).toMatchObject({ fn: "time_tracking_apply_operations" });
+    expect(client.rpcCalls[0]).toMatchObject({ fn: "time_tracking_apply_interval_operations" });
     expect(client.rpcCalls[0]?.args?.operations).toEqual([
       { type: "insert_session", session },
       {

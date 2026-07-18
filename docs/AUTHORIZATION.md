@@ -34,17 +34,14 @@ An owner is not necessarily an employee. A user has one role per organisation me
 | View/update own profile | Yes | Yes | Yes | Yes | Yes |
 | Clock own attendance | Yes | Yes | Yes | Yes* | No |
 | View own attendance | Yes | Yes | Yes | Yes* | If scoped |
-| Request own correction | Yes | Yes | Yes | Yes* | No |
+| Create/update/archive own intervals | Yes | Yes | Yes | Yes* | No |
 | View scoped employee attendance | No | Yes | Yes | Yes | Yes |
-| Approve scoped correction | No | Yes** | Yes | Yes | No |
 | Close month | No | Scoped | Yes | Yes | No |
 | Invite/deactivate employees | No | No | Yes | Yes | No |
 | Assign admin/owner role | No | No | No | Yes | No |
 | View audit log | Own events only | Scoped | Yes | Yes | Yes |
 
 \* Only if the owner also has an employee profile/work policy.
-
-\** A manager may never approve their own request.
 
 ## Manager scope
 
@@ -57,8 +54,8 @@ An owner is not necessarily an employee. A user has one role per organisation me
 
 - Employees can create clock events only for themselves.
 - The API uses server time for authoritative live clock events.
-- Employees do not directly overwrite completed work sessions. They submit correction requests.
-- Managers cannot silently alter sessions; approval applies a documented correction and creates an audit event.
+- Employees may immediately create, update, and archive only their own work intervals in the active organisation.
+- The server derives organisation, user, and membership ownership from the authenticated context; direct changes create audit events and never require approval.
 - Closed months reject attendance mutations. Only admin/owner can reopen, with a mandatory reason and audit event.
 - Records are normally archived, not hard-deleted.
 

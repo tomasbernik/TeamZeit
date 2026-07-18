@@ -1,304 +1,93 @@
 openapi: 3.1.0
 info:
   title: TeamZeit API
-  version: 0.1.0
-  description: Initial contract for identity context and MVP time tracking commands.
-servers:
-  - url: /api/v1
-security:
-  - bearerAuth: []
+  version: 0.2.0
+  description: Tenant-safe direct work-interval time tracking.
+servers: [{ url: /api/v1 }]
+security: [{ bearerAuth: [] }]
 paths:
-  /me:
-    get:
-      operationId: getCurrentContext
-      tags: [Identity]
-      responses:
-        '200':
-          description: Authenticated user and organisation memberships.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/CurrentContext' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
   /attendance/today:
     get:
       operationId: getTodayAttendance
       tags: [TimeTracking]
-      parameters:
-        - $ref: '#/components/parameters/OrganizationId'
-      responses:
-        '200':
-          description: Current user's attendance state in the organisation time zone.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/TodayAttendance' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }]
+      responses: { '200': { description: Current day including intervals and derived totals, content: { application/json: { schema: { $ref: '#/components/schemas/TodayAttendance' } } } }, '403': { $ref: '#/components/responses/Forbidden' } }
   /attendance/days/{workDate}:
     get:
-      operationId: getDailyAttendanceOverview
+      operationId: getDailyAttendance
       tags: [TimeTracking]
-      parameters:
-        - $ref: '#/components/parameters/OrganizationId'
-        - name: workDate
-          in: path
-          required: true
-          schema: { type: string, format: date }
-      responses:
-        '200':
-          description: Current user's attendance overview for one work date.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/DailyAttendanceOverview' }
-        '400': { $ref: '#/components/responses/ValidationError' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { name: workDate, in: path, required: true, schema: { type: string, format: date } }]
+      responses: { '200': { description: Daily interval overview, content: { application/json: { schema: { $ref: '#/components/schemas/DailyAttendance' } } } } }
   /attendance/months/{month}:
     get:
-      operationId: getMonthlyAttendanceOverview
+      operationId: getMonthlyAttendance
       tags: [TimeTracking]
-      parameters:
-        - $ref: '#/components/parameters/OrganizationId'
-        - name: month
-          in: path
-          required: true
-          schema:
-            type: string
-            pattern: '^\d{4}-\d{2}$'
-      responses:
-        '200':
-          description: Current user's attendance overview for a calendar month.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/MonthlyAttendanceOverview' }
-        '400': { $ref: '#/components/responses/ValidationError' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-  /attendance/sessions:
-    get:
-      operationId: listOwnWorkSessions
-      tags: [TimeTracking]
-      parameters:
-        - $ref: '#/components/parameters/OrganizationId'
-        - name: from
-          in: query
-          required: true
-          schema: { type: string, format: date }
-        - name: to
-          in: query
-          required: true
-          schema: { type: string, format: date }
-      responses:
-        '200':
-          description: Bounded list of the current user's sessions.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [items]
-                properties:
-                  items:
-                    type: array
-                    items: { $ref: '#/components/schemas/WorkSession' }
-        '400': { $ref: '#/components/responses/ValidationError' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { name: month, in: path, required: true, schema: { type: string, pattern: '^\d{4}-\d{2}$' } }]
+      responses: { '200': { description: Monthly totals, content: { application/json: { schema: { $ref: '#/components/schemas/MonthlyAttendance' } } } } }
   /attendance/commands/clock-in:
     post:
       operationId: clockIn
       tags: [TimeTracking]
-      parameters:
-        - $ref: '#/components/parameters/OrganizationId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      responses:
-        '200': { $ref: '#/components/responses/ClockCommand' }
-        '400': { $ref: '#/components/responses/ValidationError' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
-  /attendance/commands/break-start:
-    post:
-      operationId: startBreak
-      tags: [TimeTracking]
-      parameters:
-        - $ref: '#/components/parameters/OrganizationId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      responses:
-        '200': { $ref: '#/components/responses/ClockCommand' }
-        '400': { $ref: '#/components/responses/ValidationError' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
-  /attendance/commands/break-end:
-    post:
-      operationId: endBreak
-      tags: [TimeTracking]
-      parameters:
-        - $ref: '#/components/parameters/OrganizationId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      responses:
-        '200': { $ref: '#/components/responses/ClockCommand' }
-        '400': { $ref: '#/components/responses/ValidationError' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      responses: { '200': { $ref: '#/components/responses/ClockCommand' }, '409': { $ref: '#/components/responses/Conflict' } }
   /attendance/commands/clock-out:
     post:
       operationId: clockOut
       tags: [TimeTracking]
-      parameters:
-        - $ref: '#/components/parameters/OrganizationId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      responses:
-        '200': { $ref: '#/components/responses/ClockCommand' }
-        '400': { $ref: '#/components/responses/ValidationError' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
-  /corrections:
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      responses: { '200': { $ref: '#/components/responses/ClockCommand' }, '409': { $ref: '#/components/responses/Conflict' } }
+  /attendance/commands/break-start:
     post:
-      operationId: createCorrection
-      tags: [Corrections]
-      parameters:
-        - $ref: '#/components/parameters/OrganizationId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/CreateCorrection' }
-      responses:
-        '201':
-          description: Correction submitted for review.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Correction' }
-        '400': { $ref: '#/components/responses/ValidationError' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
-  /corrections/{correctionId}/review:
+      deprecated: true
+      operationId: deprecatedBreakStartAsClockOut
+      tags: [TimeTracking]
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      responses: { '200': { $ref: '#/components/responses/ClockCommand' } }
+  /attendance/commands/break-end:
     post:
-      operationId: reviewCorrection
-      tags: [Corrections]
-      parameters:
-        - $ref: '#/components/parameters/OrganizationId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-        - name: correctionId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [decision]
-              properties:
-                decision: { type: string, enum: [approve, reject] }
-                comment: { type: string, maxLength: 1000 }
-      responses:
-        '200':
-          description: Reviewed correction.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Correction' }
-        '400': { $ref: '#/components/responses/ValidationError' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
+      deprecated: true
+      operationId: deprecatedBreakEndAsClockIn
+      tags: [TimeTracking]
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      responses: { '200': { $ref: '#/components/responses/ClockCommand' } }
+  /attendance/sessions:
+    get:
+      operationId: listOwnIntervals
+      tags: [TimeTracking]
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { name: from, in: query, required: true, schema: { type: string, format: date } }, { name: to, in: query, required: true, schema: { type: string, format: date } }]
+      responses: { '200': { description: Own intervals } }
+    post:
+      operationId: createOwnInterval
+      tags: [TimeTracking]
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateInterval' } } } }
+      responses: { '201': { description: Interval created immediately, content: { application/json: { schema: { $ref: '#/components/schemas/WorkSession' } } } }, '409': { $ref: '#/components/responses/Conflict' } }
+  /attendance/sessions/{sessionId}:
+    put:
+      operationId: updateOwnInterval
+      tags: [TimeTracking]
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { $ref: '#/components/parameters/SessionId' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UpdateInterval' } } } }
+      responses: { '200': { description: Interval updated immediately }, '409': { $ref: '#/components/responses/Conflict' } }
+    delete:
+      operationId: archiveOwnInterval
+      tags: [TimeTracking]
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { $ref: '#/components/parameters/SessionId' }, { name: expectedVersion, in: query, required: true, schema: { type: integer, minimum: 1 } }]
+      responses: { '200': { description: Interval archived immediately }, '409': { $ref: '#/components/responses/Conflict' } }
 components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+  securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }
   parameters:
-    OrganizationId:
-      name: X-Organization-Id
-      in: header
-      required: true
-      schema: { type: string, format: uuid }
-      description: Selects an organisation; membership is still verified server-side.
-    IdempotencyKey:
-      name: Idempotency-Key
-      in: header
-      required: true
-      schema: { type: string, format: uuid }
+    OrganizationId: { name: X-Organization-Id, in: header, required: true, schema: { type: string, format: uuid }, description: Tenant selector verified against the authenticated membership. }
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, format: uuid } }
+    SessionId: { name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }
   responses:
-    ClockCommand:
-      description: Result based on authoritative server time.
-      content:
-        application/json:
-          schema:
-            type: object
-            required: [serverTime, session]
-            properties:
-              serverTime: { type: string, format: date-time }
-              session: { $ref: '#/components/schemas/WorkSession' }
-    Unauthenticated:
-      description: Missing or invalid access token.
-      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
-    Forbidden:
-      description: Membership or capability is missing.
-      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
-    ValidationError:
-      description: Header, path, query, or request body validation failed.
-      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
-    Conflict:
-      description: Invalid state, duplicate logical action, stale version, or closed period.
-      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    ClockCommand: { description: Server-time clock result, content: { application/json: { schema: { type: object, required: [serverTime, session], properties: { serverTime: { type: string, format: date-time }, session: { $ref: '#/components/schemas/WorkSession' } } } } } }
+    Forbidden: { description: Active tenant membership or ownership missing }
+    Conflict: { description: Invalid state, stale version, overlap, duplicate action, or closed period }
   schemas:
-    CurrentContext:
-      type: object
-      required: [user, memberships, issuedAt]
-      properties:
-        user:
-          type: object
-          required: [id, displayName, email]
-          properties:
-            id: { type: string, format: uuid }
-            displayName: { type: string }
-            email: { type: string, format: email }
-        memberships:
-          type: array
-          items:
-            type: object
-            required: [id, organization, role, status]
-            properties:
-              id: { type: string, format: uuid }
-              organization:
-                type: object
-                required: [id, name, slug, timeZone]
-                properties:
-                  id: { type: string, format: uuid }
-                  name: { type: string }
-                  slug: { type: string }
-                  timeZone: { type: string }
-                  logoUrl: { type: string, format: uri }
-              role: { type: string, enum: [owner, admin, manager, employee, auditor] }
-              status: { type: string, enum: [invited, active, inactive] }
-              employeeNumber: { type: string }
-        issuedAt: { type: string, format: date-time }
-    TodayAttendance:
-      type: object
-      required: [serverTime, state]
-      properties:
-        serverTime: { type: string, format: date-time }
-        state: { type: string, enum: [not_started, working, on_break, completed] }
-        activeSession: { $ref: '#/components/schemas/WorkSession' }
-    WorkBreak:
-      type: object
-      required: [id, startedAt]
-      properties:
-        id: { type: string, format: uuid }
-        startedAt: { type: string, format: date-time }
-        endedAt: { type: string, format: date-time }
-        durationMinutes: { type: integer, minimum: 0 }
     WorkSession:
       type: object
-      required: [id, organizationId, membershipId, workDate, startedAt, breaks, state, source, version]
+      required: [id, organizationId, membershipId, workDate, startedAt, state, source, version]
       properties:
         id: { type: string, format: uuid }
         organizationId: { type: string, format: uuid }
@@ -306,81 +95,24 @@ components:
         workDate: { type: string, format: date }
         startedAt: { type: string, format: date-time }
         endedAt: { type: string, format: date-time }
-        breaks:
-          type: array
-          items: { $ref: '#/components/schemas/WorkBreak' }
         workedMinutes: { type: integer, minimum: 0 }
-        state: { type: string, enum: [not_started, working, on_break, completed] }
-        source: { type: string, enum: [clock, approved_correction, admin_import] }
+        state: { type: string, enum: [not_started, working] }
+        source: { type: string, enum: [clock, manual, admin_import] }
         version: { type: integer, minimum: 1 }
-    DailyAttendanceOverview:
+    CreateInterval:
+      type: object
+      additionalProperties: false
+      required: [workDate, startedAt, endedAt]
+      properties: { workDate: { type: string, format: date }, startedAt: { type: string, format: date-time }, endedAt: { type: string, format: date-time } }
+    UpdateInterval:
+      allOf: [{ $ref: '#/components/schemas/CreateInterval' }, { type: object, required: [expectedVersion], properties: { expectedVersion: { type: integer, minimum: 1 } } }]
+    DailyAttendance:
       type: object
       required: [workDate, state, sessions, workedMinutes, breakMinutes]
-      properties:
-        workDate: { type: string, format: date }
-        state: { type: string, enum: [not_started, working, on_break, completed] }
-        sessions:
-          type: array
-          items: { $ref: '#/components/schemas/WorkSession' }
-        workedMinutes: { type: integer, minimum: 0 }
-        breakMinutes: { type: integer, minimum: 0 }
-    MonthlyAttendanceOverview:
+      properties: { workDate: { type: string, format: date }, state: { type: string, enum: [not_started, working] }, sessions: { type: array, items: { $ref: '#/components/schemas/WorkSession' } }, workedMinutes: { type: integer }, breakMinutes: { type: integer } }
+    TodayAttendance:
+      allOf: [{ $ref: '#/components/schemas/DailyAttendance' }, { type: object, required: [serverTime], properties: { serverTime: { type: string, format: date-time }, activeSession: { $ref: '#/components/schemas/WorkSession' } } }]
+    MonthlyAttendance:
       type: object
       required: [month, days, workedMinutes, breakMinutes]
-      properties:
-        month:
-          type: string
-          pattern: '^\d{4}-\d{2}$'
-        days:
-          type: array
-          items: { $ref: '#/components/schemas/DailyAttendanceOverview' }
-        workedMinutes: { type: integer, minimum: 0 }
-        breakMinutes: { type: integer, minimum: 0 }
-    CorrectionValues:
-      type: object
-      additionalProperties: false
-      required: [workDate, startedAt, endedAt, breakMinutes]
-      properties:
-        workDate: { type: string, format: date }
-        startedAt: { type: string, format: date-time }
-        endedAt: { type: string, format: date-time }
-        breakMinutes: { type: integer, minimum: 0, maximum: 1440 }
-    CreateCorrection:
-      type: object
-      additionalProperties: false
-      required: [sessionId, expectedVersion, proposed, reason]
-      properties:
-        sessionId: { type: string, format: uuid }
-        expectedVersion: { type: integer, minimum: 1 }
-        proposed: { $ref: '#/components/schemas/CorrectionValues' }
-        reason: { type: string, minLength: 3, maxLength: 1000 }
-    Correction:
-      type: object
-      required: [id, organizationId, requesterMembershipId, sessionId, original, proposed, reason, status, createdAt]
-      properties:
-        id: { type: string, format: uuid }
-        organizationId: { type: string, format: uuid }
-        requesterMembershipId: { type: string, format: uuid }
-        sessionId: { type: string, format: uuid }
-        original: { $ref: '#/components/schemas/CorrectionValues' }
-        proposed: { $ref: '#/components/schemas/CorrectionValues' }
-        reason: { type: string }
-        status: { type: string, enum: [pending, approved, rejected, cancelled] }
-        reviewedByMembershipId: { type: string, format: uuid }
-        reviewComment: { type: string }
-        createdAt: { type: string, format: date-time }
-        reviewedAt: { type: string, format: date-time }
-    Error:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: object
-          required: [code, message, requestId]
-          properties:
-            code:
-              type: string
-              enum: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, CONFLICT, PERIOD_CLOSED, INVALID_STATE, RATE_LIMITED, INTERNAL_ERROR]
-            message: { type: string }
-            field: { type: string }
-            requestId: { type: string }
+      properties: { month: { type: string }, days: { type: array, items: { $ref: '#/components/schemas/DailyAttendance' } }, workedMinutes: { type: integer }, breakMinutes: { type: integer } }

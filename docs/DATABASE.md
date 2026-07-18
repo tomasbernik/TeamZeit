@@ -33,10 +33,10 @@ erDiagram
 
 ## Attendance model
 
-- `work_sessions` is the current approved representation of a period of work.
-- `work_breaks` contains zero or more break intervals.
+- `work_sessions` stores non-overlapping work intervals. Break totals are derived from gaps between intervals.
+- `work_breaks` is retained only for legacy history and receives no new records.
 - `clock_events` is append-only evidence of live user actions and supports idempotent retries through `request_id`.
-- `correction_requests` captures immutable original and proposed values. Approval updates the work session in the same transaction and writes an audit event.
+- `correction_requests` is retained as legacy history; direct interval changes are immediate and write audit events.
 - Partial unique indexes allow only one open work session per member and one open break per session.
 - `month_closures` records closing and explicit reopening instead of deleting the close record.
 
@@ -45,12 +45,9 @@ erDiagram
 The command transaction and its database function/tests must enforce:
 
 - no overlapping work sessions for the same membership;
-- breaks remain within their work session;
 - clock state transitions occur in the correct order;
 - `work_date` matches the organisation-local date rule;
 - mutations are rejected for closed periods;
-- a correction reviewer is authorised and is not the requester;
-- the approved session version still matches the correction's expected base version;
 - manager access is limited to effective team/location scope.
 
 ## Deletion and retention
