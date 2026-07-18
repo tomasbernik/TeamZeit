@@ -55,6 +55,7 @@ pnpm lint         # lint all workspaces
 pnpm typecheck    # TypeScript checks without emitting output
 pnpm test         # automated tests
 pnpm test:integration # Supabase/PostgreSQL integration and RLS tests
+pnpm test:e2e     # browser E2E against local Supabase (reset DB first)
 pnpm build        # production builds
 pnpm check        # lint, typecheck, tests, and build
 ```
@@ -117,6 +118,15 @@ Run the integration/RLS tests after the reset:
 ```powershell
 pnpm test:integration
 ```
+
+Run the employee browser flow against the clean local stack:
+
+```powershell
+pnpm db:local:reset
+pnpm test:e2e
+```
+
+The E2E test signs in through the local OTP email captured by Mailpit, then verifies clock-in, a break represented by two work intervals, final clock-out, and the daily summary. It uses only fictional seeded users.
 
 The seed data uses only fictional `example.test` users and fictional organisations. The service-role key is server/test-only and must never be placed in a `VITE_` variable.
 

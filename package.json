@@ -16,14 +16,17 @@
     "dev:api": "pnpm --filter @teamzeit/api dev",
     "lint": "eslint .",
     "test:integration": "pnpm --filter @teamzeit/api test:integration",
+    "test:e2e": "playwright test",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.61.1",
     "@types/node": "^26.1.1",
     "concurrently": "^10.0.3",
+    "dotenv": "^17.4.2",
     "eslint": "^10.7.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react-hooks": "^7.1.1",
