@@ -96,7 +96,7 @@ components:
         startedAt: { type: string, format: date-time }
         endedAt: { type: string, format: date-time }
         workedMinutes: { type: integer, minimum: 0 }
-        state: { type: string, enum: [not_started, working] }
+        state: { type: string, enum: [not_started, working, completed] }
         source: { type: string, enum: [clock, manual, admin_import] }
         version: { type: integer, minimum: 1 }
     CreateInterval:
@@ -109,7 +109,7 @@ components:
     DailyAttendance:
       type: object
       required: [workDate, state, sessions, workedMinutes, breakMinutes]
-      properties: { workDate: { type: string, format: date }, state: { type: string, enum: [not_started, working] }, sessions: { type: array, items: { $ref: '#/components/schemas/WorkSession' } }, workedMinutes: { type: integer }, breakMinutes: { type: integer } }
+      properties: { workDate: { type: string, format: date }, state: { type: string, enum: [not_started, working, completed] }, sessions: { type: array, items: { $ref: '#/components/schemas/WorkSession' } }, workedMinutes: { type: integer }, breakMinutes: { type: integer } }
     TodayAttendance:
       allOf: [{ $ref: '#/components/schemas/DailyAttendance' }, { type: object, required: [serverTime], properties: { serverTime: { type: string, format: date-time }, activeSession: { $ref: '#/components/schemas/WorkSession' } } }]
     MonthlyAttendance:

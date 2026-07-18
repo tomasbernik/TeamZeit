@@ -1,6 +1,6 @@
 import type { ISODate, ISOInstant, UUID } from "./common";
 
-export type AttendanceState = "not_started" | "working";
+export type AttendanceState = "not_started" | "working" | "completed";
 export type WorkSessionSource = "clock" | "manual" | "admin_import";
 
 export interface WorkBreakDto {

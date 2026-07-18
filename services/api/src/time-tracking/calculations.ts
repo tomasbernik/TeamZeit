@@ -26,6 +26,6 @@ export function toWorkSessionDto(session: WorkSessionRecord, until?: string): Wo
     workDate: session.workDate, startedAt: session.startedAt,
     ...(session.endedAt ? { endedAt: session.endedAt } : {}),
     breaks: [], ...(workedMinutes === undefined ? {} : { workedMinutes }),
-    state: session.endedAt ? "not_started" : "working", source: session.source, version: session.version,
+    state: session.endedAt ? "completed" : "working", source: session.source, version: session.version,
   };
 }
