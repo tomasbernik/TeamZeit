@@ -3,6 +3,7 @@ services:
     name: teamzeit-api
     runtime: node
     region: frankfurt
+    plan: free
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @teamzeit/api build
     startCommand: pnpm --filter @teamzeit/api start
     healthCheckPath: /health

@@ -67,8 +67,13 @@ tables from TeamZeit application code.
 Connect the Git repository in Render and create a Blueprint from `render.yaml`.
 The Blueprint creates:
 
-- `teamzeit-api`, a Node web service with `/health` as its health check;
+- `teamzeit-api`, a free Node web service with `/health` as its health check;
 - `teamzeit-web`, a static site with a React Router rewrite to `/index.html`.
+
+The free API instance is suitable only for staging and may spin down when idle,
+making the first request slower. Do not add payment information merely to create
+this staging Blueprint; verify that the API service shows the `free` plan before
+confirming creation.
 
 Populate the Blueprint prompts with these values:
 
