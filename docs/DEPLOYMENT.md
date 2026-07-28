@@ -67,7 +67,7 @@ tables from TeamZeit application code.
 Connect the Git repository in Render and create a Blueprint from `render.yaml`.
 The Blueprint creates:
 
-- `teamzeit-api`, a free Node web service with `/health` as its health check;
+- `teamzeit-api`, a free Node web service with `/ready` as its dependency-aware health check;
 - `teamzeit-web`, a static site with a React Router rewrite to `/index.html`.
 
 The free API instance is suitable only for staging and may spin down when idle,
@@ -162,7 +162,7 @@ through ad-hoc SQL.
 Verify:
 
 1. `GET https://YOUR-API-HOST/health` returns HTTP 200 and
-   `supabaseConfigured: true`.
+   `supabaseConfigured: true`; `GET /ready` also returns HTTP 200.
 2. Opening `/login` and refreshing it does not return 404.
 3. The owner receives an OTP, signs in, and sees the expected organisation.
 4. Clock in/out and an attendance read work.
@@ -181,3 +181,5 @@ Staging suitability does not imply production readiness. Before processing real
 employee data, complete the full authorisation/RLS matrix, configure monitoring
 and alerting, establish backup/restore ownership, review GDPR and retention
 requirements, configure a custom domain and SMTP, and document incident response.
+Use [OPERATIONS.md](OPERATIONS.md) and [PRIVACY_CHECKLIST.md](PRIVACY_CHECKLIST.md)
+as mandatory go-live gates.

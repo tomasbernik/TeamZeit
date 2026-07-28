@@ -31,6 +31,7 @@ Open:
 - web application: `http://127.0.0.1:5173`
 - login: `http://127.0.0.1:5173/login`
 - API health: `http://127.0.0.1:3000/health`
+- API readiness: `http://127.0.0.1:3000/ready`
 - versioned API root: `http://127.0.0.1:3000/api/v1`
 
 The application starts without Supabase credentials. In that state the login controls are disabled and the API health response reports `supabaseConfigured: false`.

@@ -6,7 +6,7 @@ services:
     plan: free
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @teamzeit/api build
     startCommand: pnpm --filter @teamzeit/api start
-    healthCheckPath: /health
+    healthCheckPath: /ready
     autoDeployTrigger: commit
     envVars:
       - key: NODE_VERSION

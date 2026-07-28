@@ -109,6 +109,22 @@ describe("TeamZeit API foundation", () => {
       service: "teamzeit-api",
       supabaseConfigured: false,
     });
+    expect(response.headers["x-request-id"]).toBeTruthy();
+    expect(response.headers["x-content-type-options"]).toBe("nosniff");
+  });
+
+  it("reports dependency readiness without exposing configuration", async () => {
+    const readyApp = buildApp(readApiConfig({ NODE_ENV: "test" }), { readinessCheck: async () => true });
+    const unavailableApp = buildApp(readApiConfig({ NODE_ENV: "test" }), { readinessCheck: async () => false });
+    apps.push(readyApp, unavailableApp);
+
+    const ready = await readyApp.inject({ method: "GET", url: "/ready" });
+    const unavailable = await unavailableApp.inject({ method: "GET", url: "/ready" });
+
+    expect(ready.statusCode).toBe(200);
+    expect(ready.json()).toEqual({ status: "ready", service: "teamzeit-api" });
+    expect(unavailable.statusCode).toBe(503);
+    expect(unavailable.json()).toEqual({ status: "unavailable", service: "teamzeit-api" });
   });
 
   it("exposes the versioned API root", async () => {

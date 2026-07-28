@@ -35,6 +35,7 @@ export interface ApiDependencies {
   monthClosing?: MonthClosingRouteDependencies;
   organisationStructure?: OrganisationStructureRouteDependencies;
   reporting?: ReportingRouteDependencies;
+  readinessCheck?: () => Promise<boolean>;
 }
 
 const openPeriodGuard: PeriodGuard = {
@@ -51,12 +52,29 @@ export function buildApp(
   const app = Fastify({ logger: config.nodeEnv !== "test" });
 
   void app.register(cors, { origin: config.webOrigin, credentials: true });
+  app.addHook("onSend", async (request, reply) => {
+    reply.header("X-Request-Id", request.id);
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("Referrer-Policy", "no-referrer");
+    reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    reply.header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
+    if (config.nodeEnv === "production") reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  });
 
   app.get("/health", async () => ({
     status: "ok",
     service: "teamzeit-api",
     supabaseConfigured: config.supabaseConfigured,
   }));
+
+  app.get("/ready", async (_request, reply) => {
+    const ready = await (dependencies.readinessCheck ?? createReadinessCheck(config))();
+    return reply.status(ready ? 200 : 503).send({
+      status: ready ? "ready" : "unavailable",
+      service: "teamzeit-api",
+    });
+  });
 
   app.get("/api/v1", async () => ({
     name: "TeamZeit API",
@@ -116,11 +134,24 @@ function createDefaultEmployeeAdministrationDependencies(
 }
 
 function normalizeDependencies(dependencies: ApiDependencies | IdentityContextDependencies): ApiDependencies {
-  if ("identity" in dependencies || "timeTracking" in dependencies || "employeeAdministration" in dependencies || "monthClosing" in dependencies || "organisationStructure" in dependencies || "reporting" in dependencies) {
+  if ("identity" in dependencies || "timeTracking" in dependencies || "employeeAdministration" in dependencies || "monthClosing" in dependencies || "organisationStructure" in dependencies || "reporting" in dependencies || "readinessCheck" in dependencies) {
     return dependencies;
   }
 
   return { identity: dependencies as IdentityContextDependencies };
+}
+
+function createReadinessCheck(config: ApiConfig): () => Promise<boolean> {
+  const client = createSupabaseServiceClient(config);
+  return async () => {
+    if (!client) return config.nodeEnv !== "production";
+    try {
+      const { error } = await client.from("organizations").select("id", { head: true, count: "exact" }).limit(1);
+      return !error;
+    } catch {
+      return false;
+    }
+  };
 }
 
 function createDefaultReportingDependencies(config: ApiConfig, identity?: IdentityContextDependencies): ReportingRouteDependencies {
