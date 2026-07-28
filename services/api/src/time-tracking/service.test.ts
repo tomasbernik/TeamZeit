@@ -18,6 +18,41 @@ describe("interval time tracking", () => {
     const day = await service.getDailyOverview(context, "2026-07-17");
     expect(day.sessions).toHaveLength(2); expect(day.workedMinutes).toBe(360); expect(day.breakMinutes).toBe(30);
   });
+  it("deducts only the missing part of the mandatory break after six worked hours", async () => {
+    const { service, setNow } = setup();
+    await service.clockIn(context, ids[20]!); setNow("2026-07-17T10:00:00.000Z"); await service.clockOut(context, ids[21]!);
+    setNow("2026-07-17T10:20:00.000Z"); await service.clockIn(context, ids[22]!); setNow("2026-07-17T14:00:00.000Z"); await service.clockOut(context, ids[23]!);
+    const day = await service.getDailyOverview(context, "2026-07-17");
+    expect(day).toMatchObject({ recordedBreakMinutes: 20, automaticBreakMinutes: 10, breakMinutes: 30, workedMinutes: 450, plannedMinutes: 480, balanceMinutes: -30 });
+  });
+  it("does not add an automatic break when at least thirty minutes were recorded", async () => {
+    const { service, setNow } = setup();
+    await service.clockIn(context, ids[20]!); setNow("2026-07-17T10:00:00.000Z"); await service.clockOut(context, ids[21]!);
+    setNow("2026-07-17T10:30:00.000Z"); await service.clockIn(context, ids[22]!); setNow("2026-07-17T14:30:00.000Z"); await service.clockOut(context, ids[23]!);
+    expect(await service.getDailyOverview(context, "2026-07-17")).toMatchObject({ recordedBreakMinutes: 30, automaticBreakMinutes: 0, workedMinutes: 480, balanceMinutes: 0 });
+  });
+  it("keeps a holiday neutral for planned time and balance", async () => {
+    const { service, repository } = setup(); repository.holidays.add(`${context.organizationId}:2026-07-17`);
+    const day = await service.getDailyOverview(context, "2026-07-17");
+    expect(day).toMatchObject({ isHoliday: true, plannedMinutes: 0, balanceMinutes: 0 });
+  });
+  it("caps a forgotten open interval at local midnight and requires correction", async () => {
+    const { service, setNow } = setup(); await service.clockIn(context, ids[20]!); setNow("2026-07-18T06:00:00.000Z");
+    const day = await service.getDailyOverview(context, "2026-07-17");
+    expect(day.requiresAction).toBe(true); expect(day.sessions[0]).toMatchObject({ state: "requires_action", issue: "missing_clock_out", calculationEndedAt: "2026-07-17T22:00:00.000Z" });
+  });
+  it("allows a new workday while an older missing clock-out still requires correction", async () => {
+    const { service, repository, setNow } = setup(); await service.clockIn(context, ids[20]!); setNow("2026-07-18T06:00:00.000Z");
+    await expect(service.clockIn(context, ids[21]!)).resolves.toMatchObject({ session: { workDate: "2026-07-18", state: "working" } });
+    expect(repository.sessions.size).toBe(2);
+    const today = await service.getCurrentDay(context); expect(today.state).toBe("working");
+    expect((await service.getDailyOverview(context, "2026-07-17")).requiresAction).toBe(true);
+  });
+  it("applies an effective individual daily plan", async () => {
+    const { service } = setup();
+    await service.setEmployeeWorkRule(context, context.membershipId, ids[20]!, { effectiveFrom: "2026-07-01", weekdayMinutes: { monday: 360, tuesday: 360, wednesday: 360, thursday: 360, friday: 360, saturday: 0, sunday: 0 } });
+    expect(await service.getDailyOverview(context, "2026-07-17")).toMatchObject({ plannedMinutes: 360, balanceMinutes: -360 });
+  });
   it("is idempotent and prevents a second open interval", async () => {
     const { service, repository } = setup(); const requestId = ids[20]!;
     const first = await service.clockIn(context, requestId); const retry = await service.clockIn(context, requestId);

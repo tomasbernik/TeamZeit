@@ -5,6 +5,7 @@ import type {
   TimeTrackingRepository,
   WorkSessionRecord,
 } from "./types.js";
+import type { EmployeeWorkRuleDto, SetEmployeeWorkRuleRequest } from "@teamzeit/contracts";
 
 function clone<T>(value: T): T {
   return structuredClone(value);
@@ -14,6 +15,8 @@ export class InMemoryTimeTrackingRepository implements TimeTrackingRepository {
   public readonly sessions = new Map<string, WorkSessionRecord>();
   public readonly clockEvents: ClockEventRecord[] = [];
   public readonly auditEvents: AuditEventRecord[] = [];
+  public readonly workRules: EmployeeWorkRuleDto[] = [];
+  public readonly holidays = new Set<string>();
   private readonly idempotency = new Map<string, StoredCommandResult>();
 
   public async transaction<T>(operation: () => Promise<T>): Promise<T> {
@@ -38,11 +41,15 @@ export class InMemoryTimeTrackingRepository implements TimeTrackingRepository {
     this.idempotency.set(this.idempotencyKey(organizationId, membershipId, requestId), clone(result));
   }
 
-  public async findOpenSession(organizationId: string, membershipId: string): Promise<WorkSessionRecord | undefined> {
+  public async findOpenSession(organizationId: string, membershipId: string, workDate: string): Promise<WorkSessionRecord | undefined> {
     const session = [...this.sessions.values()].find(
-      (candidate) => candidate.organizationId === organizationId && candidate.membershipId === membershipId && !candidate.endedAt,
+      (candidate) => candidate.organizationId === organizationId && candidate.membershipId === membershipId && candidate.workDate === workDate && !candidate.endedAt,
     );
     return session ? clone(session) : undefined;
+  }
+
+  public async listOpenSessions(organizationId: string, membershipId: string, to: string): Promise<WorkSessionRecord[]> {
+    return [...this.sessions.values()].filter((candidate) => candidate.organizationId === organizationId && candidate.membershipId === membershipId && candidate.workDate <= to && !candidate.endedAt && !candidate.archivedAt).sort((left, right) => right.workDate.localeCompare(left.workDate)).map(clone);
   }
 
   public async findSession(
@@ -90,6 +97,29 @@ export class InMemoryTimeTrackingRepository implements TimeTrackingRepository {
 
   public async appendAuditEvent(event: AuditEventRecord): Promise<void> {
     this.auditEvents.push(clone(event));
+  }
+
+  public async findEffectiveWorkRule(organizationId: string, membershipId: string, workDate: string) {
+    return [...this.workRules]
+      .filter((rule) => rule.organizationId === organizationId && rule.membershipId === membershipId && rule.effectiveFrom <= workDate && (!rule.effectiveTo || rule.effectiveTo >= workDate))
+      .sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom))[0];
+  }
+
+  public async isHoliday(organizationId: string, workDate: string) {
+    return this.holidays.has(`${organizationId}:${workDate}`);
+  }
+
+  public async setEmployeeWorkRule(organizationId: string, membershipId: string, ruleId: string, input: SetEmployeeWorkRuleRequest, auditEvent: AuditEventRecord) {
+    for (const rule of this.workRules) {
+      if (rule.organizationId === organizationId && rule.membershipId === membershipId && rule.effectiveFrom < input.effectiveFrom && (!rule.effectiveTo || rule.effectiveTo >= input.effectiveFrom)) {
+        const previousDate = new Date(`${input.effectiveFrom}T12:00:00.000Z`); previousDate.setUTCDate(previousDate.getUTCDate() - 1);
+        rule.effectiveTo = previousDate.toISOString().slice(0, 10);
+      }
+    }
+    const rule: EmployeeWorkRuleDto = { id: ruleId, organizationId, membershipId, effectiveFrom: input.effectiveFrom, weekdayMinutes: input.weekdayMinutes, breakThresholdMinutes: input.breakThresholdMinutes ?? 360, minimumBreakMinutes: input.minimumBreakMinutes ?? 30 };
+    this.workRules.push(rule);
+    this.auditEvents.push(clone(auditEvent));
+    return clone(rule);
   }
 
   private idempotencyKey(organizationId: string, membershipId: string, requestId: string): string {

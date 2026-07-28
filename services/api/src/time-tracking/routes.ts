@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import type { CreateWorkSessionRequest, MembershipRole, UpdateWorkSessionRequest, UUID } from "@teamzeit/contracts";
+import type { CreateWorkSessionRequest, MembershipRole, SetEmployeeWorkRuleRequest, UpdateWorkSessionRequest, UUID } from "@teamzeit/contracts";
 import type { ApiConfig } from "../config/env.js";
 import { IdentityError, resolveCurrentContext, type IdentityContextDependencies } from "../identity/context.js";
 import { TimeTrackingError } from "./errors.js";
@@ -13,6 +13,8 @@ const monthSchema = z.string().regex(/^\d{4}-\d{2}$/u);
 const instantSchema = z.string().datetime({ offset: true });
 const createSchema = z.object({ workDate: dateSchema, startedAt: instantSchema, endedAt: instantSchema }) satisfies z.ZodType<CreateWorkSessionRequest>;
 const updateSchema = createSchema.extend({ expectedVersion: z.number().int().min(1) }) satisfies z.ZodType<UpdateWorkSessionRequest>;
+const weekdayMinutesSchema = z.object({ monday: z.number().int().min(0).max(1440), tuesday: z.number().int().min(0).max(1440), wednesday: z.number().int().min(0).max(1440), thursday: z.number().int().min(0).max(1440), friday: z.number().int().min(0).max(1440), saturday: z.number().int().min(0).max(1440), sunday: z.number().int().min(0).max(1440) });
+const workRuleSchema = z.object({ effectiveFrom: dateSchema, weekdayMinutes: weekdayMinutesSchema, breakThresholdMinutes: z.number().int().min(0).max(1440).optional(), minimumBreakMinutes: z.number().int().min(0).max(1440).optional() }) satisfies z.ZodType<SetEmployeeWorkRuleRequest>;
 export interface TimeTrackingRouteDependencies { service: TimeTrackingService; identity?: IdentityContextDependencies; }
 interface TenantContext { attendance: AttendanceMembershipContext; role: MembershipRole; }
 type Handler<T> = (context: TenantContext) => Promise<T>;
@@ -39,6 +41,11 @@ export function registerTimeTrackingRoutes(app: FastifyInstance, config: ApiConf
     const { sessionId } = parseParams(request, z.object({ sessionId: uuidSchema }));
     const { expectedVersion } = parseQuery(request, z.object({ expectedVersion: z.coerce.number().int().min(1) }));
     return dependencies.service.archiveSession(attendance, sessionId, requireKey(request), expectedVersion);
+  }));
+  app.put("/api/v1/attendance/employees/:membershipId/work-rule", (request, reply) => withContext(request, reply, config, dependencies.identity, ({ attendance, role }) => {
+    if (role !== "owner" && role !== "admin") throw new TimeTrackingError("FORBIDDEN", "Nur Administration oder Inhaber dürfen Arbeitsregeln ändern.");
+    const { membershipId } = parseParams(request, z.object({ membershipId: uuidSchema }));
+    return dependencies.service.setEmployeeWorkRule(attendance, membershipId, requireKey(request), parseBody(request, workRuleSchema));
   }));
 }
 

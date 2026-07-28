@@ -1,4 +1,4 @@
-import type { ClockCommandResponse, DailyAttendanceOverview, ISODate, ISOInstant, IanaTimeZone, MonthlyAttendanceOverview, UUID, WorkBreakDto, WorkSessionDto, WorkSessionSource } from "@teamzeit/contracts";
+import type { ClockCommandResponse, DailyAttendanceOverview, EmployeeWorkRuleDto, ISODate, ISOInstant, IanaTimeZone, MonthlyAttendanceOverview, SetEmployeeWorkRuleRequest, UUID, WorkBreakDto, WorkSessionDto, WorkSessionSource } from "@teamzeit/contracts";
 export type ClockEventType = "clock_in" | "break_start" | "break_end" | "clock_out";
 export interface AttendanceMembershipContext { organizationId: UUID; membershipId: UUID; userId: UUID; organizationTimeZone: IanaTimeZone; }
 export interface WorkBreakRecord extends WorkBreakDto { organizationId: UUID; workSessionId: UUID; }
@@ -10,11 +10,15 @@ export interface TimeTrackingRepository {
   transaction?<T>(operation: () => Promise<T>): Promise<T>;
   findIdempotentResult(organizationId: UUID, membershipId: UUID, requestId: UUID): Promise<StoredCommandResult | undefined>;
   saveIdempotentResult(organizationId: UUID, membershipId: UUID, requestId: UUID, result: StoredCommandResult): Promise<void>;
-  findOpenSession(organizationId: UUID, membershipId: UUID): Promise<WorkSessionRecord | undefined>;
+  findOpenSession(organizationId: UUID, membershipId: UUID, workDate: ISODate): Promise<WorkSessionRecord | undefined>;
+  listOpenSessions(organizationId: UUID, membershipId: UUID, to: ISODate): Promise<WorkSessionRecord[]>;
   findSession(organizationId: UUID, membershipId: UUID, sessionId: UUID): Promise<WorkSessionRecord | undefined>;
   listSessions(organizationId: UUID, membershipId: UUID, from: ISODate, to: ISODate): Promise<WorkSessionRecord[]>;
   insertSession(session: WorkSessionRecord): Promise<void>; updateSession(session: WorkSessionRecord): Promise<void>;
   appendClockEvent(event: ClockEventRecord): Promise<void>; appendAuditEvent(event: AuditEventRecord): Promise<void>;
+  findEffectiveWorkRule(organizationId: UUID, membershipId: UUID, workDate: ISODate): Promise<EmployeeWorkRuleDto | undefined>;
+  isHoliday(organizationId: UUID, workDate: ISODate): Promise<boolean>;
+  setEmployeeWorkRule(organizationId: UUID, membershipId: UUID, ruleId: UUID, input: SetEmployeeWorkRuleRequest, auditEvent: AuditEventRecord): Promise<EmployeeWorkRuleDto>;
 }
 export interface PeriodGuard { assertPeriodOpen(input: { organizationId: UUID; membershipId: UUID; workDate: ISODate; operation: "clock" | "manual" | "correction"; }): Promise<void>; }
 export interface Clock { now(): Date; } export interface IdGenerator { uuid(): UUID; }

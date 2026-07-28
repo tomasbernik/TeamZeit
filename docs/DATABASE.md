@@ -20,6 +20,8 @@ erDiagram
   WORK_SESSION ||--o{ CLOCK_EVENT : evidenced_by
   WORK_SESSION ||--o{ CORRECTION_REQUEST : corrected_by
   MEMBERSHIP ||--o{ MONTH_CLOSURE : closes
+  MEMBERSHIP ||--o{ EMPLOYEE_WORK_RULE : follows
+  ORGANIZATION ||--o{ ORGANIZATION_HOLIDAY : observes
   ORGANIZATION ||--o{ AUDIT_EVENT : logs
 ```
 
@@ -39,6 +41,9 @@ erDiagram
 - `correction_requests` is retained as legacy history; direct interval changes are immediate and write audit events.
 - Partial unique indexes allow only one open work session per member and one open break per session.
 - `month_closures` records closing and explicit reopening instead of deleting the close record.
+- `employee_work_rules` stores effective-dated weekday targets and break thresholds; the default is 480 minutes Monday-Friday, with a 30-minute minimum break after more than 360 worked minutes.
+- `organization_holidays` makes a calendar date neutral: planned minutes and daily balance are both zero.
+- An open interval is never given a fabricated clock-out. After the organisation-local midnight its calculation is capped at midnight and exposed as `missing_clock_out` until manually corrected.
 
 ## Invariants enforced outside simple constraints
 

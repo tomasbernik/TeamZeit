@@ -30,3 +30,40 @@ export interface CurrentContextResponse {
   memberships: MembershipSummary[];
   issuedAt: ISOInstant;
 }
+
+export interface WorkPolicySummary {
+  id: UUID;
+  name: string;
+  weeklyMinutes: number;
+  minimumBreakMinutes: number;
+}
+
+export interface EmployeeAdministrationSummary {
+  id: UUID;
+  email: string;
+  role: MembershipRole;
+  status: MembershipStatus;
+  teamId?: UUID | undefined;
+  workPolicyId?: UUID | undefined;
+  version: number;
+  invitationSentAt?: ISOInstant | undefined;
+}
+
+export interface CreateEmployeeRequest {
+  email: string;
+  role: Exclude<MembershipRole, "owner">;
+}
+
+export interface InviteEmployeeRequest {
+  email: string;
+  role: Exclude<MembershipRole, "owner">;
+  teamId?: UUID | undefined;
+  workPolicyId?: UUID | undefined;
+}
+
+export interface UpdateEmployeeAssignmentRequest {
+  role?: MembershipRole | undefined;
+  teamId?: UUID | null | undefined;
+  workPolicyId?: UUID | null | undefined;
+  expectedVersion: number;
+}

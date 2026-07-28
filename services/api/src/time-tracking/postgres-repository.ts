@@ -11,6 +11,7 @@ import type {
   WorkBreakRecord,
   WorkSessionRecord,
 } from "./types.js";
+import type { EmployeeWorkRuleDto, SetEmployeeWorkRuleRequest } from "@teamzeit/contracts";
 
 interface SupabaseResult<T> {
   data: T | null;
@@ -123,17 +124,24 @@ export class PostgresTimeTrackingRepository implements TimeTrackingRepository {
     await this.enqueueOrExecute({ type: "save_idempotent_result", organizationId, membershipId, requestId, result });
   }
 
-  public async findOpenSession(organizationId: string, membershipId: string): Promise<WorkSessionRecord | undefined> {
+  public async findOpenSession(organizationId: string, membershipId: string, workDate: string): Promise<WorkSessionRecord | undefined> {
     const result = await this.query<WorkSessionRow>("work_sessions")
       .select(sessionColumns)
       .eq("organization_id", organizationId)
       .eq("membership_id", membershipId)
+      .eq("work_date", workDate)
       .is("ended_at", null)
       .is("archived_at", null)
       .maybeSingle();
 
     this.assertNoError(result, "Open work session could not be loaded.");
     return result.data ? mapSession(result.data) : undefined;
+  }
+
+  public async listOpenSessions(organizationId: string, membershipId: string, to: string): Promise<WorkSessionRecord[]> {
+    const result = await this.query<WorkSessionRow>("work_sessions").select(sessionColumns).eq("organization_id", organizationId).eq("membership_id", membershipId).lte("work_date", to).is("ended_at", null).is("archived_at", null).order("work_date", { ascending: false });
+    this.assertNoError(result, "Open work sessions could not be loaded.");
+    return (result.data ?? []).map(mapSession);
   }
 
   public async findSession(organizationId: string, membershipId: string, sessionId: string): Promise<WorkSessionRecord | undefined> {
@@ -179,6 +187,25 @@ export class PostgresTimeTrackingRepository implements TimeTrackingRepository {
 
   public async appendAuditEvent(event: AuditEventRecord): Promise<void> {
     await this.enqueueOrExecute({ type: "append_audit_event", event });
+  }
+
+  public async findEffectiveWorkRule(organizationId: string, membershipId: string, workDate: string): Promise<EmployeeWorkRuleDto | undefined> {
+    const result = await this.client.rpc<EmployeeWorkRuleDto>("time_tracking_effective_work_rule", { target_organization_id: organizationId, target_membership_id: membershipId, target_work_date: workDate });
+    this.assertNoError(result, "Work rule could not be loaded.");
+    return result.data ?? undefined;
+  }
+
+  public async isHoliday(organizationId: string, workDate: string): Promise<boolean> {
+    const result = await this.client.rpc<boolean>("time_tracking_is_holiday", { target_organization_id: organizationId, target_work_date: workDate });
+    this.assertNoError(result, "Holiday could not be loaded.");
+    return result.data === true;
+  }
+
+  public async setEmployeeWorkRule(organizationId: string, membershipId: string, ruleId: string, input: SetEmployeeWorkRuleRequest, auditEvent: AuditEventRecord): Promise<EmployeeWorkRuleDto> {
+    const result = await this.client.rpc<EmployeeWorkRuleDto>("time_tracking_set_employee_work_rule", { target_organization_id: organizationId, target_membership_id: membershipId, target_rule_id: ruleId, target_effective_from: input.effectiveFrom, target_weekday_minutes: input.weekdayMinutes, target_break_threshold_minutes: input.breakThresholdMinutes ?? 360, target_minimum_break_minutes: input.minimumBreakMinutes ?? 30, target_audit_event: auditEvent });
+    this.assertNoError(result, "Work rule could not be saved.");
+    if (!result.data) throw new TimeTrackingError("INTERNAL_ERROR", "Work rule could not be returned.");
+    return result.data;
   }
 
   private query<T>(table: string): QueryBuilder<T> {

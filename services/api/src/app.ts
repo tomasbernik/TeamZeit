@@ -10,10 +10,19 @@ import { PostgresPeriodGuard, PostgresTimeTrackingRepository } from "./time-trac
 import { registerTimeTrackingRoutes, type TimeTrackingRouteDependencies } from "./time-tracking/routes.js";
 import { TimeTrackingService } from "./time-tracking/service.js";
 import type { PeriodGuard } from "./time-tracking/types.js";
+import { EmployeeAdministrationService } from "./identity/administration.js";
+import { InMemoryEmployeeAdministrationRepository } from "./identity/memory-administration-repository.js";
+import { registerEmployeeAdministrationRoutes, type EmployeeAdministrationRouteDependencies } from "./identity/routes.js";
+import { InMemoryMonthClosingRepository } from "./month-closing/memory-repository.js";
+import { PostgresMonthClosingRepository } from "./month-closing/postgres-repository.js";
+import { registerMonthClosingRoutes, type MonthClosingRouteDependencies } from "./month-closing/routes.js";
+import { MonthClosingService } from "./month-closing/service.js";
 
 export interface ApiDependencies {
   identity?: IdentityContextDependencies;
   timeTracking?: TimeTrackingRouteDependencies;
+  employeeAdministration?: EmployeeAdministrationRouteDependencies;
+  monthClosing?: MonthClosingRouteDependencies;
 }
 
 const openPeriodGuard: PeriodGuard = {
@@ -69,16 +78,24 @@ export function buildApp(
   });
 
   registerTimeTrackingRoutes(app, config, dependencies.timeTracking ?? createDefaultTimeTrackingDependencies(config, dependencies.identity));
+  registerEmployeeAdministrationRoutes(app, config, dependencies.employeeAdministration ?? { service: new EmployeeAdministrationService(new InMemoryEmployeeAdministrationRepository()), ...(dependencies.identity ? { identity: dependencies.identity } : {}) });
+  registerMonthClosingRoutes(app, config, dependencies.monthClosing ?? createDefaultMonthClosingDependencies(config, dependencies.identity));
 
   return app;
 }
 
 function normalizeDependencies(dependencies: ApiDependencies | IdentityContextDependencies): ApiDependencies {
-  if ("identity" in dependencies || "timeTracking" in dependencies) {
+  if ("identity" in dependencies || "timeTracking" in dependencies || "employeeAdministration" in dependencies || "monthClosing" in dependencies) {
     return dependencies;
   }
 
   return { identity: dependencies as IdentityContextDependencies };
+}
+
+function createDefaultMonthClosingDependencies(config: ApiConfig, identity?: IdentityContextDependencies): MonthClosingRouteDependencies {
+  const client = config.timeTrackingRepository === "postgres" ? createSupabaseServiceClient(config) : null;
+  if (config.timeTrackingRepository === "postgres" && !client) throw new Error("TIME_TRACKING_REPOSITORY=postgres requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
+  return { service: new MonthClosingService(client ? new PostgresMonthClosingRepository(client) : new InMemoryMonthClosingRepository()), ...(identity ? { identity } : {}) };
 }
 
 function createDefaultTimeTrackingDependencies(

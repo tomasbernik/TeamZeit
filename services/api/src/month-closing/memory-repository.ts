@@ -1,0 +1,12 @@
+import type { MonthClosureDto } from "@teamzeit/contracts";
+import { randomUUID } from "node:crypto";
+import { TimeTrackingError } from "../time-tracking/errors.js";
+import type { MonthClosingCommand, MonthClosingRepository } from "./types.js";
+export interface MonthClosingAuditRecord { action: string; requestId: string; reason: string; entityId: string; }
+export class InMemoryMonthClosingRepository implements MonthClosingRepository {
+  private readonly closures = new Map<string, MonthClosureDto>(); public readonly auditEvents: MonthClosingAuditRecord[] = [];
+  public async get(organizationId: string, membershipId: string, monthStart: string) { return clone(this.closures.get(key(organizationId, membershipId, monthStart))); }
+  public async close(command: MonthClosingCommand): Promise<MonthClosureDto> { const storageKey = key(command.organizationId, command.targetMembershipId, command.monthStart); const existing = this.closures.get(storageKey); if (existing?.status === "closed") throw new TimeTrackingError("CONFLICT", "Der Monat ist bereits geschlossen."); const value: MonthClosureDto = { id: existing?.id ?? randomUUID(), organizationId: command.organizationId, membershipId: command.targetMembershipId, monthStart: command.monthStart, status: "closed", closedAt: command.occurredAt, closedByMembershipId: command.membershipId, reason: command.reason }; this.closures.set(storageKey, value); this.auditEvents.push({ action: "month_closure.closed", requestId: command.requestId, reason: command.reason, entityId: value.id! }); return clone(value)!; }
+  public async reopen(command: MonthClosingCommand): Promise<MonthClosureDto> { const storageKey = key(command.organizationId, command.targetMembershipId, command.monthStart); const existing = this.closures.get(storageKey); if (!existing || existing.status === "open") throw new TimeTrackingError("CONFLICT", "Der Monat ist bereits geöffnet."); const value: MonthClosureDto = { ...existing, status: "open", reopenedAt: command.occurredAt, reopenedByMembershipId: command.membershipId, reason: command.reason }; this.closures.set(storageKey, value); this.auditEvents.push({ action: "month_closure.reopened", requestId: command.requestId, reason: command.reason, entityId: value.id! }); return clone(value)!; }
+}
+function key(organizationId: string, membershipId: string, monthStart: string) { return `${organizationId}:${membershipId}:${monthStart}`; } function clone<T>(value: T | undefined): T | undefined { return value === undefined ? undefined : structuredClone(value); }

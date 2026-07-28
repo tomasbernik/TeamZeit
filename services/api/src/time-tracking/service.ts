@@ -1,7 +1,7 @@
-import type { ClockCommandResponse, CreateWorkSessionRequest, ISODate, TodayAttendanceResponse, UUID, UpdateWorkSessionRequest, WorkSessionDto, WorkSessionsResponse } from "@teamzeit/contracts";
-import { calculateGapMinutes, deriveAttendanceState, toWorkSessionDto } from "./calculations.js";
+import type { ClockCommandResponse, CreateWorkSessionRequest, ISODate, SetEmployeeWorkRuleRequest, TodayAttendanceResponse, UUID, UpdateWorkSessionRequest, WorkSessionDto, WorkSessionsResponse } from "@teamzeit/contracts";
+import { applyBreakRule, calculateGapMinutes, deriveAttendanceState, toWorkSessionDto, weekdayPlannedMinutes } from "./calculations.js";
 import { conflict, invalidState, validationError } from "./errors.js";
-import { localDateForInstant, monthBounds, toIsoInstant } from "./time.js";
+import { localDateForInstant, monthBounds, nextDate, toIsoInstant } from "./time.js";
 import type { AttendanceMembershipContext, Clock, ClockEventType, DailyAttendanceOverview, IdGenerator, MonthlyAttendanceOverview, PeriodGuard, TimeTrackingRepository, WorkSessionRecord } from "./types.js";
 
 export interface TimeTrackingServiceDependencies { repository: TimeTrackingRepository; periodGuard: PeriodGuard; clock: Clock; ids: IdGenerator; }
@@ -13,7 +13,7 @@ export class TimeTrackingService {
     return this.runClockCommand(context, requestId, "clock_in", async (now) => {
       const workDate = localDateForInstant(now, context.organizationTimeZone);
       await this.assertOpen(context, workDate, "clock");
-      if (await this.dependencies.repository.findOpenSession(context.organizationId, context.membershipId)) throw invalidState("Sie sind bereits eingestempelt.");
+      if (await this.dependencies.repository.findOpenSession(context.organizationId, context.membershipId, workDate)) throw invalidState("Sie sind heute bereits eingestempelt.");
       const session: WorkSessionRecord = { id: this.dependencies.ids.uuid(), organizationId: context.organizationId, membershipId: context.membershipId, workDate, startedAt: now, breaks: [], source: "clock", version: 1 };
       await this.ensureNoOverlap(context, session);
       await this.dependencies.repository.insertSession(session);
@@ -23,7 +23,8 @@ export class TimeTrackingService {
 
   public clockOut(context: AttendanceMembershipContext, requestId: UUID): Promise<ClockCommandResponse> {
     return this.runClockCommand(context, requestId, "clock_out", async (now) => {
-      const session = await this.dependencies.repository.findOpenSession(context.organizationId, context.membershipId);
+      const workDate = localDateForInstant(now, context.organizationTimeZone);
+      const session = await this.dependencies.repository.findOpenSession(context.organizationId, context.membershipId, workDate);
       if (!session) throw invalidState("Sie sind nicht eingestempelt.");
       await this.assertOpen(context, session.workDate, "clock");
       if (Date.parse(now) <= Date.parse(session.startedAt)) throw invalidState("Das Ende muss nach dem Beginn liegen.");
@@ -43,12 +44,14 @@ export class TimeTrackingService {
     const workDate = localDateForInstant(serverTime, context.organizationTimeZone);
     const sessions = await this.dependencies.repository.listSessions(context.organizationId, context.membershipId, workDate, workDate);
     const active = sessions.find((item) => !item.endedAt);
-    const overview = this.buildDailyOverview(workDate, sessions, serverTime);
-    return { serverTime, workDate, state: deriveAttendanceState(active), ...(active ? { activeSession: toWorkSessionDto(active, serverTime) } : {}), sessions: overview.sessions, workedMinutes: overview.workedMinutes, breakMinutes: overview.breakMinutes };
+    const overview = await this.buildDailyOverview(context, workDate, sessions, serverTime);
+    const openSessions = await this.dependencies.repository.listOpenSessions(context.organizationId, context.membershipId, workDate);
+    const shownActive = active ?? openSessions.find((item) => item.workDate < workDate);
+    return { serverTime, ...overview, state: shownActive ? toWorkSessionDto(shownActive, serverTime, context.organizationTimeZone).state : overview.state, ...(shownActive ? { activeSession: toWorkSessionDto(shownActive, serverTime, context.organizationTimeZone) } : {}) };
   }
 
   public async getDailyOverview(context: AttendanceMembershipContext, workDate: ISODate): Promise<DailyAttendanceOverview> {
-    return this.buildDailyOverview(workDate, await this.dependencies.repository.listSessions(context.organizationId, context.membershipId, workDate, workDate));
+    return this.buildDailyOverview(context, workDate, await this.dependencies.repository.listSessions(context.organizationId, context.membershipId, workDate, workDate));
   }
 
   public async getMonthlyOverview(context: AttendanceMembershipContext, month: string): Promise<MonthlyAttendanceOverview> {
@@ -56,12 +59,20 @@ export class TimeTrackingService {
     const sessions = await this.dependencies.repository.listSessions(context.organizationId, context.membershipId, from, to);
     const grouped = new Map<string, WorkSessionRecord[]>();
     for (const session of sessions) grouped.set(session.workDate, [...(grouped.get(session.workDate) ?? []), session]);
-    const days = [...grouped].sort(([a], [b]) => a.localeCompare(b)).map(([date, items]) => this.buildDailyOverview(date, items));
-    return { month, days, workedMinutes: days.reduce((n, day) => n + day.workedMinutes, 0), breakMinutes: days.reduce((n, day) => n + day.breakMinutes, 0) };
+    const dates: ISODate[] = [];
+    for (let date = from; date <= to; date = nextDate(date)) dates.push(date);
+    const days = await Promise.all(dates.map((date) => this.buildDailyOverview(context, date, grouped.get(date) ?? [])));
+    return { month, days, workedMinutes: days.reduce((n, day) => n + day.workedMinutes, 0), breakMinutes: days.reduce((n, day) => n + day.breakMinutes, 0), plannedMinutes: days.reduce((n, day) => n + day.plannedMinutes, 0), balanceMinutes: days.reduce((n, day) => n + day.balanceMinutes, 0), requiresAction: days.some((day) => day.requiresAction) };
   }
 
   public async listOwnSessions(context: AttendanceMembershipContext, from: ISODate, to: ISODate): Promise<WorkSessionsResponse> {
     return { items: (await this.dependencies.repository.listSessions(context.organizationId, context.membershipId, from, to)).map((item) => toWorkSessionDto(item)) };
+  }
+
+  public async setEmployeeWorkRule(context: AttendanceMembershipContext, membershipId: UUID, requestId: UUID, input: SetEmployeeWorkRuleRequest) {
+    const ruleId = this.dependencies.ids.uuid();
+    const auditEvent = { id: this.dependencies.ids.uuid(), organizationId: context.organizationId, actorUserId: context.userId, actorMembershipId: context.membershipId, action: "employee_work_rule.set", entityType: "employee_work_rule", entityId: ruleId, occurredAt: toIsoInstant(this.dependencies.clock.now()), requestId, afterValues: input, metadata: { targetMembershipId: membershipId } };
+    return this.dependencies.repository.setEmployeeWorkRule(context.organizationId, membershipId, ruleId, input, auditEvent);
   }
 
   public createSession(context: AttendanceMembershipContext, requestId: UUID, input: CreateWorkSessionRequest): Promise<WorkSessionDto> {
@@ -108,12 +119,13 @@ export class TimeTrackingService {
       if (opens) {
         const workDate = localDateForInstant(now, context.organizationTimeZone);
         await this.assertOpen(context, workDate, "clock");
-        if (await this.dependencies.repository.findOpenSession(context.organizationId, context.membershipId)) throw invalidState("Sie sind bereits eingestempelt.");
+        if (await this.dependencies.repository.findOpenSession(context.organizationId, context.membershipId, workDate)) throw invalidState("Sie sind heute bereits eingestempelt.");
         const session: WorkSessionRecord = { id: this.dependencies.ids.uuid(), organizationId: context.organizationId, membershipId: context.membershipId, workDate, startedAt: now, breaks: [], source: "clock", version: 1 };
         await this.ensureNoOverlap(context, session);
         await this.dependencies.repository.insertSession(session); return session;
       }
-      const session = await this.dependencies.repository.findOpenSession(context.organizationId, context.membershipId);
+      const workDate = localDateForInstant(now, context.organizationTimeZone);
+      const session = await this.dependencies.repository.findOpenSession(context.organizationId, context.membershipId, workDate);
       if (!session) throw invalidState("Sie sind nicht eingestempelt.");
       await this.assertOpen(context, session.workDate, "clock");
       if (Date.parse(now) <= Date.parse(session.startedAt)) throw invalidState("Das Ende muss nach dem Beginn liegen.");
@@ -142,9 +154,18 @@ export class TimeTrackingService {
     });
   }
 
-  private buildDailyOverview(workDate: ISODate, sessions: WorkSessionRecord[], now = toIsoInstant(this.dependencies.clock.now())): DailyAttendanceOverview {
-    const dtos = sessions.sort((a, b) => a.startedAt.localeCompare(b.startedAt)).map((item) => toWorkSessionDto(item, now));
-    return { workDate, state: deriveAttendanceState(sessions.find((item) => !item.endedAt)), sessions: dtos, workedMinutes: dtos.reduce((n, item) => n + (item.workedMinutes ?? 0), 0), breakMinutes: calculateGapMinutes(dtos) };
+  private async buildDailyOverview(context: AttendanceMembershipContext, workDate: ISODate, sessions: WorkSessionRecord[], now = toIsoInstant(this.dependencies.clock.now())): Promise<DailyAttendanceOverview> {
+    const dtos = sessions.sort((a, b) => a.startedAt.localeCompare(b.startedAt)).map((item) => toWorkSessionDto(item, now, context.organizationTimeZone));
+    const recordedWorkMinutes = dtos.reduce((n, item) => n + (item.workedMinutes ?? 0), 0);
+    const recordedBreakMinutes = calculateGapMinutes(dtos);
+    const rule = await this.dependencies.repository.findEffectiveWorkRule(context.organizationId, context.membershipId, workDate);
+    const weekdayMinutes = rule?.weekdayMinutes ?? { monday: 480, tuesday: 480, wednesday: 480, thursday: 480, friday: 480, saturday: 0, sunday: 0 };
+    const breakResult = applyBreakRule(recordedWorkMinutes, recordedBreakMinutes, rule?.breakThresholdMinutes ?? 360, rule?.minimumBreakMinutes ?? 30);
+    const isHoliday = await this.dependencies.repository.isHoliday(context.organizationId, workDate);
+    const plannedMinutes = isHoliday ? 0 : weekdayPlannedMinutes(workDate, weekdayMinutes);
+    const requiresAction = dtos.some((item) => item.issue === "missing_clock_out");
+    const workedMinutes = breakResult.creditedMinutes;
+    return { workDate, state: requiresAction ? "requires_action" : deriveAttendanceState(sessions.find((item) => !item.endedAt)), sessions: dtos, workedMinutes, breakMinutes: recordedBreakMinutes + breakResult.automaticBreakMinutes, recordedBreakMinutes, automaticBreakMinutes: breakResult.automaticBreakMinutes, plannedMinutes, balanceMinutes: isHoliday ? 0 : workedMinutes - plannedMinutes, isHoliday, requiresAction };
   }
   private validateInterval(context: AttendanceMembershipContext, input: CreateWorkSessionRequest) {
     if (Date.parse(input.endedAt) <= Date.parse(input.startedAt)) throw validationError("Das Ende muss nach dem Beginn liegen.", "endedAt");

@@ -1,0 +1,9 @@
+import { describe, expect, it } from "vitest";
+import { InMemoryMonthClosingRepository } from "./memory-repository.js";
+import { MonthClosingService } from "./service.js";
+const actor = { organizationId: "20000000-0000-4000-8000-000000000001", membershipId: "30000000-0000-4000-8000-000000000004", userId: "10000000-0000-4000-8000-000000000004" }; const employee = "30000000-0000-4000-8000-000000000001";
+describe("month closing", () => {
+  it("closes and reopens a month and audits both operations", async () => { const repository = new InMemoryMonthClosingRepository(); const service = new MonthClosingService(repository, () => new Date("2026-08-01T10:00:00Z")); expect(await service.close(actor, "40000000-0000-4000-8000-000000000001", employee, "2026-07", "Payroll prepared")).toMatchObject({ status: "closed", monthStart: "2026-07-01" }); expect(await service.reopen(actor, "40000000-0000-4000-8000-000000000002", employee, "2026-07", "Missing interval")).toMatchObject({ status: "open", reason: "Missing interval" }); expect(repository.auditEvents.map((event) => event.action)).toEqual(["month_closure.closed", "month_closure.reopened"]); });
+  it("requires a meaningful reason", async () => { const service = new MonthClosingService(new InMemoryMonthClosingRepository()); await expect(service.close(actor, "40000000-0000-4000-8000-000000000001", employee, "2026-07", "  ")).rejects.toMatchObject({ code: "VALIDATION_ERROR", field: "reason" }); });
+  it("rejects duplicate state transitions", async () => { const service = new MonthClosingService(new InMemoryMonthClosingRepository()); await service.close(actor, "40000000-0000-4000-8000-000000000001", employee, "2026-07", "Payroll prepared"); await expect(service.close(actor, "40000000-0000-4000-8000-000000000002", employee, "2026-07", "Again")).rejects.toMatchObject({ code: "CONFLICT" }); });
+});

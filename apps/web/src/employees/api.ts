@@ -1,0 +1,14 @@
+import type { CreateEmployeeRequest, EmployeeAdministrationSummary, EmployeeWorkRuleDto, SetEmployeeWorkRuleRequest, UpdateEmployeeAssignmentRequest } from "@teamzeit/contracts";
+import { errorMessageFromResponse } from "../auth/api";
+import { webConfig } from "../config/env";
+
+export interface EmployeeRequestContext { accessToken: string; organizationId: string; fetcher?: typeof fetch; }
+const url = (path: string) => `${webConfig.apiUrl.replace(/\/$/, "")}${path}`;
+const headers = (context: EmployeeRequestContext, idempotencyKey?: string): HeadersInit => ({ Authorization: `Bearer ${context.accessToken}`, "X-Organization-Id": context.organizationId, "Content-Type": "application/json", ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}) });
+async function json<T>(response: Response, fallback: string): Promise<T> { if (!response.ok) throw new Error(await errorMessageFromResponse(response, fallback)); return response.json() as Promise<T>; }
+
+export async function listEmployees(context: EmployeeRequestContext) { return json<EmployeeAdministrationSummary[]>(await (context.fetcher ?? fetch)(url("/employees"), { headers: headers(context) }), "Mitarbeitende konnten nicht geladen werden."); }
+export async function createEmployee(context: EmployeeRequestContext, input: CreateEmployeeRequest) { return json<EmployeeAdministrationSummary>(await (context.fetcher ?? fetch)(url("/employees"), { method: "POST", headers: headers(context, crypto.randomUUID()), body: JSON.stringify(input) }), "Mitarbeitende konnten nicht angelegt werden."); }
+export async function sendEmployeeInvitation(context: EmployeeRequestContext, membershipId: string) { return json<EmployeeAdministrationSummary>(await (context.fetcher ?? fetch)(url(`/employees/${membershipId}/invitation`), { method: "POST", headers: headers(context, crypto.randomUUID()) }), "Die Einladung konnte nicht gesendet werden."); }
+export async function updateEmployee(context: EmployeeRequestContext, membershipId: string, input: UpdateEmployeeAssignmentRequest) { return json<EmployeeAdministrationSummary>(await (context.fetcher ?? fetch)(url(`/employees/${membershipId}/assignment`), { method: "PATCH", headers: headers(context, crypto.randomUUID()), body: JSON.stringify(input) }), "Mitarbeitende konnten nicht geändert werden."); }
+export async function setEmployeeWorkRule(context: EmployeeRequestContext, membershipId: string, input: SetEmployeeWorkRuleRequest) { return json<EmployeeWorkRuleDto>(await (context.fetcher ?? fetch)(url(`/attendance/employees/${membershipId}/work-rule`), { method: "PUT", headers: headers(context, crypto.randomUUID()), body: JSON.stringify(input) }), "Die Arbeitsregel konnte nicht gespeichert werden."); }

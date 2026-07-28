@@ -29,6 +29,10 @@ const supabaseRolePrivilegesMigration = readFileSync(
   resolve(repositoryRoot, "supabase/migrations/20260717090000_time_tracking_role_privileges.sql"),
   "utf8",
 );
+const workRulesMigration = readFileSync(resolve(repositoryRoot, "database/migrations/20260718180000_employee_work_rules.sql"), "utf8");
+const supabaseWorkRulesMigration = readFileSync(resolve(repositoryRoot, "supabase/migrations/20260718180000_employee_work_rules.sql"), "utf8");
+const openPerWorkdayMigration = readFileSync(resolve(repositoryRoot, "database/migrations/20260718190000_open_session_per_workday.sql"), "utf8");
+const supabaseOpenPerWorkdayMigration = readFileSync(resolve(repositoryRoot, "supabase/migrations/20260718190000_open_session_per_workday.sql"), "utf8");
 
 describe("time tracking database migrations", () => {
   it("persists idempotency keys with a tenant-scoped unique key", () => {
@@ -72,5 +76,21 @@ describe("time tracking database migrations", () => {
     expect(supabaseStorageMigration).toBe(storageMigration);
     expect(supabaseRlsMigration).toBe(rlsMigration);
     expect(supabaseRolePrivilegesMigration).toBe(rolePrivilegesMigration);
+    expect(supabaseWorkRulesMigration).toBe(workRulesMigration);
+    expect(supabaseOpenPerWorkdayMigration).toBe(openPerWorkdayMigration);
+  });
+
+  it("keeps work rules and holidays tenant-safe and effective-dated", () => {
+    expect(workRulesMigration).toContain("foreign key (organization_id, membership_id)");
+    expect(workRulesMigration).toContain("alter table public.employee_work_rules enable row level security");
+    expect(workRulesMigration).toContain("employee_work_rules_own_read");
+    expect(workRulesMigration).toContain("organization_holidays_member_read");
+    expect(workRulesMigration).toContain("effective_to=target_effective_from-1");
+    expect(workRulesMigration).toContain("grant execute on function public.time_tracking_effective_work_rule");
+  });
+  it("allows only one open interval per employee workday", () => {
+    expect(openPerWorkdayMigration).toContain("one_open_session_per_member_workday");
+    expect(openPerWorkdayMigration).toContain("membership_id with =");
+    expect(openPerWorkdayMigration).toContain("work_date with =");
   });
 });
