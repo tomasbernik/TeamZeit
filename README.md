@@ -10,6 +10,11 @@ TeamZeit is a mobile-first, multi-tenant workforce time-tracking application. Th
 
 No production migration is applied by the commands in this README.
 
+For the first shared staging deployment, follow
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). The repository includes a Render
+Blueprint, but deployment still requires separately created Supabase and Render
+accounts and their secret environment values.
+
 ## First local start
 
 From the repository root:

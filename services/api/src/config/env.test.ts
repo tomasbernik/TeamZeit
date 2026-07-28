@@ -22,6 +22,11 @@ describe("readApiConfig", () => {
     expect(config.supabaseServiceRoleConfigured).toBe(false);
   });
 
+  it("accepts the standard hosting-provider port while keeping API_PORT precedence", () => {
+    expect(readApiConfig({ NODE_ENV: "test", PORT: "10000" }).port).toBe(10000);
+    expect(readApiConfig({ NODE_ENV: "test", PORT: "10000", API_PORT: "3100" }).port).toBe(3100);
+  });
+
   it("keeps service-role configuration server-side and opt-in for time tracking", () => {
     const config = readApiConfig({
       NODE_ENV: "production",

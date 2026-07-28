@@ -8,7 +8,8 @@ loadDotEnv({ path: repositoryEnvPath, quiet: true });
 const apiEnvironmentSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   API_HOST: z.string().default("127.0.0.1"),
-  API_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  API_PORT: z.coerce.number().int().min(1).max(65535).optional(),
+  PORT: z.coerce.number().int().min(1).max(65535).optional(),
   WEB_ORIGIN: z.string().url().default("http://localhost:5173"),
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_PUBLISHABLE_KEY: z.string().min(1).optional(),
@@ -42,7 +43,7 @@ export function readApiConfig(source: NodeJS.ProcessEnv = process.env): ApiConfi
   return {
     nodeEnv: value.NODE_ENV,
     host: value.API_HOST,
-    port: value.API_PORT,
+    port: value.API_PORT ?? value.PORT ?? 3000,
     webOrigin: value.WEB_ORIGIN,
     ...(value.SUPABASE_URL ? { supabaseUrl: value.SUPABASE_URL } : {}),
     ...(supabasePublishableKey ? { supabaseAnonKey: supabasePublishableKey } : {}),
