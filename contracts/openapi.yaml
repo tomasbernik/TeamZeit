@@ -131,6 +131,16 @@ paths:
       parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateInterval' } } } }
       responses: { '201': { description: Interval created immediately, content: { application/json: { schema: { $ref: '#/components/schemas/WorkSession' } } } }, '409': { $ref: '#/components/responses/Conflict' } }
+  /reports/attendance/{month}:
+    get:
+      operationId: monthlyAttendanceReport
+      tags: [Reporting]
+      parameters:
+        - { $ref: '#/components/parameters/OrganizationId' }
+        - { name: month, in: path, required: true, schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$' } }
+      responses:
+        '200': { description: Scope-aware monthly attendance report }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /attendance/sessions/{sessionId}:
     put:
       operationId: updateOwnInterval

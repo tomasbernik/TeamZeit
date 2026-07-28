@@ -246,9 +246,9 @@ export function EmployeesPage() {
               {selected.status === "invited" && canEditSelected && (
                 <button className="secondary-button" disabled={pending} onClick={() => context && void run(
                   () => sendEmployeeInvitation(context, selected.id),
-                  "Einladung wurde für den Versand vorgemerkt.",
+                  "Einladung wurde per E-Mail versendet.",
                 )}>
-                  {selected.invitationSentAt ? "Versand erneut vormerken" : "Versand vormerken"}
+                  {selected.invitationSentAt ? "Einladung erneut senden" : "Einladung senden"}
                 </button>
               )}
               {selected.status === "active" && selected.id !== activeMembership?.id && canEditSelected && (

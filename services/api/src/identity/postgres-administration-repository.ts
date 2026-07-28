@@ -61,8 +61,18 @@ export class PostgresEmployeeAdministrationRepository implements EmployeeAdminis
     return this.apply(actor, "create", command.idempotencyKey, { email: command.email, role: command.role });
   }
 
-  public sendInvitation(actor: AdministrationActor, membershipId: UUID, idempotencyKey: UUID) {
-    return this.apply(actor, "send_invitation", idempotencyKey, { membershipId });
+  public async sendInvitation(actor: AdministrationActor, membershipId: UUID, authUserId: UUID, idempotencyKey: UUID) {
+    const result = await this.client.rpc<Row>("employee_invitation_confirm", {
+      target_organization_id: actor.organizationId,
+      actor_membership_id: actor.membershipId,
+      actor_user_id: actor.userId,
+      target_membership_id: membershipId,
+      target_auth_user_id: authUserId,
+      command_request_id: idempotencyKey,
+    });
+    if (result.error) throw mapError(result.error.message);
+    if (!result.data) throw internal();
+    return map(result.data);
   }
 
   public invite(actor: AdministrationActor, command: InviteCommand) {

@@ -165,6 +165,7 @@ docs/              module, database, and authorisation documentation
 - employee administration and effective-dated work rules;
 - month status, closing, and reopening commands with attendance mutation guards;
 - PostgreSQL repositories and migrations for the implemented MVP modules;
+- scope-aware monthly attendance reporting with CSV export;
 - unit, migration, PostgreSQL integration, and employee attendance E2E tests;
 - environment-based configuration;
 - optional Supabase client initialisation;
@@ -175,8 +176,7 @@ docs/              module, database, and authorisation documentation
 
 - manager-scope enforcement for organisation structure;
 - absence, scheduling, document, reporting, and settings logic;
-- invitation email delivery (the current administration flow records that delivery was requested);
-- file storage, notifications, and exports;
+- file storage, notifications, and payroll-specific exports;
 - production-ready RLS coverage for every role/resource combination;
 - production deployment and monitoring.
 

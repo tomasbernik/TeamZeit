@@ -11,6 +11,7 @@ import { registerTimeTrackingRoutes, type TimeTrackingRouteDependencies } from "
 import { TimeTrackingService } from "./time-tracking/service.js";
 import type { PeriodGuard } from "./time-tracking/types.js";
 import { EmployeeAdministrationService } from "./identity/administration.js";
+import { SupabaseInvitationDelivery } from "./identity/supabase-invitation-delivery.js";
 import { InMemoryEmployeeAdministrationRepository } from "./identity/memory-administration-repository.js";
 import { PostgresEmployeeAdministrationRepository } from "./identity/postgres-administration-repository.js";
 import { registerEmployeeAdministrationRoutes, type EmployeeAdministrationRouteDependencies } from "./identity/routes.js";
@@ -22,6 +23,10 @@ import { InMemoryOrganisationStructureRepository } from "./organisation-structur
 import { PostgresOrganisationStructureRepository } from "./organisation-structure/postgres-repository.js";
 import { registerOrganisationStructureRoutes, type OrganisationStructureRouteDependencies } from "./organisation-structure/routes.js";
 import { OrganisationStructureService } from "./organisation-structure/service.js";
+import { InMemoryReportingRepository } from "./reporting/memory-repository.js";
+import { PostgresReportingRepository } from "./reporting/postgres-repository.js";
+import { registerReportingRoutes, type ReportingRouteDependencies } from "./reporting/routes.js";
+import { ReportingService } from "./reporting/service.js";
 
 export interface ApiDependencies {
   identity?: IdentityContextDependencies;
@@ -29,6 +34,7 @@ export interface ApiDependencies {
   employeeAdministration?: EmployeeAdministrationRouteDependencies;
   monthClosing?: MonthClosingRouteDependencies;
   organisationStructure?: OrganisationStructureRouteDependencies;
+  reporting?: ReportingRouteDependencies;
 }
 
 const openPeriodGuard: PeriodGuard = {
@@ -87,6 +93,7 @@ export function buildApp(
   registerEmployeeAdministrationRoutes(app, config, dependencies.employeeAdministration ?? createDefaultEmployeeAdministrationDependencies(config, dependencies.identity));
   registerMonthClosingRoutes(app, config, dependencies.monthClosing ?? createDefaultMonthClosingDependencies(config, dependencies.identity));
   registerOrganisationStructureRoutes(app, config, dependencies.organisationStructure ?? createDefaultOrganisationStructureDependencies(config, dependencies.identity));
+  registerReportingRoutes(app, config, dependencies.reporting ?? createDefaultReportingDependencies(config, dependencies.identity));
 
   return app;
 }
@@ -102,17 +109,27 @@ function createDefaultEmployeeAdministrationDependencies(
   return {
     service: new EmployeeAdministrationService(
       client ? new PostgresEmployeeAdministrationRepository(client) : new InMemoryEmployeeAdministrationRepository(),
+      client ? new SupabaseInvitationDelivery(client, config.webOrigin) : undefined,
     ),
     ...(identity ? { identity } : {}),
   };
 }
 
 function normalizeDependencies(dependencies: ApiDependencies | IdentityContextDependencies): ApiDependencies {
-  if ("identity" in dependencies || "timeTracking" in dependencies || "employeeAdministration" in dependencies || "monthClosing" in dependencies || "organisationStructure" in dependencies) {
+  if ("identity" in dependencies || "timeTracking" in dependencies || "employeeAdministration" in dependencies || "monthClosing" in dependencies || "organisationStructure" in dependencies || "reporting" in dependencies) {
     return dependencies;
   }
 
   return { identity: dependencies as IdentityContextDependencies };
+}
+
+function createDefaultReportingDependencies(config: ApiConfig, identity?: IdentityContextDependencies): ReportingRouteDependencies {
+  const client = config.timeTrackingRepository === "postgres" ? createSupabaseServiceClient(config) : null;
+  if (config.timeTrackingRepository === "postgres" && !client) throw new Error("TIME_TRACKING_REPOSITORY=postgres requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
+  return {
+    service: new ReportingService(client ? new PostgresReportingRepository(client) : new InMemoryReportingRepository()),
+    ...(identity ? { identity } : {}),
+  };
 }
 
 function createDefaultOrganisationStructureDependencies(config: ApiConfig, identity?: IdentityContextDependencies): OrganisationStructureRouteDependencies {

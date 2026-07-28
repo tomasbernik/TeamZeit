@@ -134,6 +134,13 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .month-day.day-issue { border-color: #e7c76b; background: #fffaf0; }
 .month-day .issue-text { color: #9a6311; }
 .day-link { min-height: 34px; padding: 0 12px; border: 0; border-radius: 8px; color: var(--accent-dark); background: var(--accent-soft); cursor: pointer; font-weight: 750; }
+.report-table-wrap { overflow-x: auto; }
+.report-table { width: 100%; border-collapse: collapse; }
+.report-table th, .report-table td { padding: 12px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.report-table th:first-child, .report-table td:first-child { text-align: left; }
+.report-table thead th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
+.report-table tfoot th { border-bottom: 0; color: var(--ink); }
+.report-table + .issue-banner { margin-top: 18px; }
 
 @media (max-width: 760px) {
   .app-shell { display: block; }

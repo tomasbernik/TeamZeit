@@ -8,6 +8,7 @@ const navigation = [
   { to: "/attendance", label: "Zeiterfassung", icon: "Z", roles: ["owner", "admin", "manager", "employee", "auditor"] },
   { to: "/employees", label: "Mitarbeitende", icon: "M", roles: ["owner", "admin", "manager", "auditor"] },
   { to: "/organisation-structure", label: "Struktur", icon: "O", roles: ["owner", "admin", "manager"] },
+  { to: "/reports", label: "Berichte", icon: "B", roles: ["owner", "admin", "manager", "auditor"] },
 ] as const satisfies ReadonlyArray<{
   to: string;
   label: string;

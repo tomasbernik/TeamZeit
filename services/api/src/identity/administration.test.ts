@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { vi } from "vitest";
 import { EmployeeAdministrationError, EmployeeAdministrationService, type AdministrationActor, type EmployeeAdministrationRepository } from "./administration.js";
 
 const owner: AdministrationActor = { organizationId: "20000000-0000-4000-8000-000000000001", membershipId: "30000000-0000-4000-8000-000000000001", userId: "10000000-0000-4000-8000-000000000001", role: "owner" };
@@ -9,4 +10,23 @@ describe("employee administration", () => {
   it("denies administrators assigning privileged roles", async () => { const service = new EmployeeAdministrationService(repository); const admin = { ...owner, role: "admin" as const }; await expect(service.updateAssignment(admin, "30000000-0000-4000-8000-000000000002", { role: "owner", expectedVersion: 1 }, "90000000-0000-4000-8000-000000000001")).rejects.toMatchObject({ code: "FORBIDDEN" }); });
   it("denies managers even when they supply another organization id", async () => { const service = new EmployeeAdministrationService(repository); await expect(service.list({ ...owner, organizationId: "20000000-0000-4000-8000-000000000002", role: "manager" })).rejects.toBeInstanceOf(EmployeeAdministrationError); });
   it("prevents self-deactivation", async () => { const service = new EmployeeAdministrationService(repository); await expect(service.deactivate(owner, owner.membershipId, 1, "90000000-0000-4000-8000-000000000001")).rejects.toMatchObject({ code: "CONFLICT" }); });
+  it("delivers an invitation before confirming the linked Auth user", async () => {
+    const invited = { id: "30000000-0000-4000-8000-000000000002", email: "employee@example.test", role: "employee" as const, status: "invited" as const, version: 1 };
+    const delivery = { send: vi.fn().mockResolvedValue({ userId: "10000000-0000-4000-8000-000000000002" }) };
+    const confirmingRepository = {
+      ...repository,
+      list: vi.fn().mockResolvedValue([invited]),
+      sendInvitation: vi.fn().mockResolvedValue({ ...invited, invitationSentAt: "2026-07-28T18:00:00.000Z", version: 2 }),
+    };
+    const service = new EmployeeAdministrationService(confirmingRepository, delivery);
+
+    await expect(service.sendInvitation(owner, invited.id, "90000000-0000-4000-8000-000000000001")).resolves.toMatchObject({ version: 2 });
+    expect(delivery.send).toHaveBeenCalledWith(invited.email);
+    expect(confirmingRepository.sendInvitation).toHaveBeenCalledWith(
+      owner,
+      invited.id,
+      "10000000-0000-4000-8000-000000000002",
+      "90000000-0000-4000-8000-000000000001",
+    );
+  });
 });

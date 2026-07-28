@@ -22,8 +22,10 @@ mutations and produce immutable audit events.
 `services/api/src/identity` provides current membership context and administrator/owner employee commands.
 Employee work rules are effective-dated and provide weekday target minutes plus the minimum break threshold.
 Role assignment remains constrained by `docs/AUTHORIZATION.md`; owner assignment is not delegated to admins.
-The invitation command currently records an idempotent, audited delivery request; connection to an email provider
-is still deferred and the UI must not describe the request as completed email delivery.
+Invitation delivery uses the server-side Supabase Auth administration API and the configured `WEB_ORIGIN` redirect.
+After successful delivery, an audited database command links the Auth user to the invited membership. The first
+successful sign-in activates invited memberships and records a separate audit event. Production delivery requires
+custom SMTP configuration in Supabase.
 
 ### Month Closing
 
