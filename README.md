@@ -166,7 +166,6 @@ docs/              module, database, and authorisation documentation
 - month status, closing, and reopening commands with attendance mutation guards;
 - PostgreSQL repositories and migrations for the implemented MVP modules;
 - unit, migration, PostgreSQL integration, and employee attendance E2E tests;
-- placeholder routes for Absences and Settings;
 - environment-based configuration;
 - optional Supabase client initialisation;
 - API health and version root endpoints;
@@ -174,7 +173,7 @@ docs/              module, database, and authorisation documentation
 
 ## Not implemented yet
 
-- organisation structure and manager-scope enforcement;
+- manager-scope enforcement for organisation structure;
 - absence, scheduling, document, reporting, and settings logic;
 - invitation email delivery (the current administration flow records that delivery was requested);
 - file storage, notifications, and exports;

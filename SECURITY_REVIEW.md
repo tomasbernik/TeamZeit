@@ -52,27 +52,21 @@ References:
 
 ### M-001: `/api/v1/me` returns inactive memberships
 
-Status: not changed.
+Status: fixed.
 
-The current context endpoint returns memberships for the authenticated user, including inactive memberships. The web client filters inactive memberships out of active tenant selection, and attendance endpoints independently require an active membership plus `X-Organization-Id`. However, `docs/AUTHORIZATION.md` says deactivated memberships lose organization access immediately, and returning organization metadata for inactive memberships weakens that rule.
-
-Recommendation: decide whether inactive membership visibility is required for UX. If not, filter `/api/v1/me` to active memberships or return a minimal inactive marker without organization details.
+`resolveCurrentContext` now returns only active memberships, so a deactivated user no longer receives organisation metadata through `/api/v1/me`.
 
 ### M-002: Manager-scoped read RLS is not implemented yet
 
-Status: not changed.
+Status: fixed.
 
-The schema enables RLS on tenant tables and current policies are owner/self baseline policies. The file explicitly defers detailed manager-scope policies. That is acceptable for unshipped manager views, but manager/scoped attendance views must not ship until RLS helper functions and tests cover in-scope and out-of-scope access.
-
-Recommendation: add scope-aware RLS helpers and required RLS tests before adding manager attendance/correction list endpoints.
+Scope-aware policies cover attendance and organisation structure reads. The final effective-scope migration ensures both the employee assignment and manager scope are valid on the attendance date. PostgreSQL integration tests cover in-scope, out-of-scope, expired-scope, inactive, cross-tenant, administrator, owner, auditor, and employee access.
 
 ### M-003: Time tracking date ranges are syntactically validated but unbounded
 
-Status: not changed.
+Status: fixed.
 
-`/attendance/sessions?from=&to=` validates date format, but does not enforce `from <= to` or a maximum range. This is not a tenant isolation issue, but it can become an availability problem once backed by a real database.
-
-Recommendation: enforce ordered, bounded ranges in the API contract and route validation before production use.
+`/attendance/sessions?from=&to=` rejects reversed ranges and ranges longer than 366 days. The OpenAPI contract documents the same boundary.
 
 ### M-004: Contract compatibility is manual
 
@@ -86,19 +80,15 @@ Recommendation: add a contract compatibility check in CI once contract generatio
 
 ### L-001: Service worker intercepts all same-origin GET requests
 
-Status: not changed.
+Status: fixed.
 
-The service worker precaches only the app shell (`/`, manifest, icon) and does not dynamically cache API responses. Same-origin GET requests are still intercepted and use `fetch(...).catch(() => caches.match(event.request))`. This does not currently cache attendance or identity API data, but a tighter route allowlist would reduce future mistakes.
-
-Recommendation: restrict service worker handling to navigation/app-shell assets and explicitly bypass `/api/`.
+The service worker explicitly bypasses `/api/`; API responses are never handled by its offline fallback.
 
 ### L-002: No direct RLS regression harness yet
 
-Status: not changed.
+Status: fixed for implemented MVP resources.
 
-The schema enables RLS and avoids direct client mutation policies for attendance, approvals, closures, membership administration, and audit events. Current automated tests exercise API authorization with fakes, not database policies.
-
-Recommendation: add database/RLS tests for anonymous, inactive, employee-own, employee-colleague, manager in-scope, manager out-of-scope, cross-organization, admin/owner, auditor, and closed-period cases before relying on Supabase RLS in production.
+The local Supabase integration suite directly exercises PostgreSQL policies for anonymous, inactive, employee-own, employee-colleague, manager in-scope and out-of-scope, expired scope, cross-organization, administrator/owner, auditor, immutable audit/clock evidence, and closed-period behavior.
 
 ## Positive Findings
 

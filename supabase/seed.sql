@@ -86,8 +86,8 @@ insert into public.team_members (organization_id, team_id, membership_id, valid_
   ('20000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', '2026-01-01')
 on conflict do nothing;
 
-insert into public.manager_scopes (id, organization_id, manager_membership_id, scope_type, team_id, valid_from) values
-  ('60000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000005', 'team', '50000000-0000-4000-8000-000000000001', '2026-01-01')
+insert into public.manager_scopes (id, organization_id, manager_membership_id, scope_type, team_id, valid_from, valid_until) values
+  ('60000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000005', 'team', '50000000-0000-4000-8000-000000000001', '2026-01-01', '2026-07-31')
 on conflict (id) do nothing;
 
 insert into public.work_sessions (id, organization_id, membership_id, work_date, started_at, ended_at, source, version) values

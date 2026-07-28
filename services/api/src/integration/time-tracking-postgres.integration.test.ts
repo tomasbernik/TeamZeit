@@ -28,6 +28,23 @@ const randomIds: IdGenerator = {
 };
 
 describe("Supabase/PostgreSQL RLS integration", () => {
+  it("limits manager attendance reads to employees and dates inside the effective scope", async () => {
+    const client = userClient(env, ids.managerUser);
+    const current = await client.from("work_sessions").select("id, membership_id").eq("organization_id", ids.orgNorth);
+    const afterScope = await client.rpc("is_attendance_manager_for", {
+      target_organization_id: ids.orgNorth,
+      manager_membership_id: ids.managerMembership,
+      employee_membership_id: ids.employeeOneMembership,
+      target_work_date: "2026-08-01",
+    });
+
+    expect(current.error).toBeNull();
+    expect(current.data?.map((row) => row.id).sort()).toEqual([ids.employeeOneSession, "70000000-0000-4000-8000-000000000004"].sort());
+    expect(current.data?.every((row) => row.membership_id === ids.employeeOneMembership)).toBe(true);
+    expect(afterScope.error).toBeNull();
+    expect(afterScope.data).toBe(false);
+  });
+
   it("lets an employee read only their own attendance records", async () => {
     const client = userClient(env, ids.employeeOneUser);
     const { data, error } = await client.from("work_sessions").select("id, membership_id").eq("organization_id", ids.orgNorth);

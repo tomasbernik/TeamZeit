@@ -199,7 +199,7 @@ describe("TeamZeit API foundation", () => {
     });
   });
 
-  it("keeps inactive memberships visible for the client to deny tenant access", async () => {
+  it("does not expose inactive membership or organization details", async () => {
     const app = buildApp(testConfig, {
       createClient: () =>
         fakeClient({
@@ -230,7 +230,39 @@ describe("TeamZeit API foundation", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json().memberships).toHaveLength(1);
-    expect(response.json().memberships[0]).toMatchObject({ status: "inactive", role: "auditor" });
+    expect(response.json().memberships).toEqual([]);
+  });
+
+  it("rejects reversed and excessively large attendance ranges", async () => {
+    const organizationId = "00000000-0000-4000-8000-000000000001";
+    const app = buildApp(testConfig, {
+      createClient: () =>
+        fakeClient({
+          user: { id: "user-1", email: "ada@example.test" },
+          memberships: [{
+            id: "membership-1",
+            role: "employee",
+            status: "active",
+            employee_number: "E-1",
+            organization: {
+              id: organizationId,
+              name: "TeamZeit GmbH",
+              slug: "teamzeit",
+              time_zone: "Europe/Berlin",
+              logo_path: null,
+            },
+          }],
+        }),
+    });
+    apps.push(app);
+
+    const headers = { authorization: "Bearer valid-token", "x-organization-id": organizationId };
+    const reversed = await app.inject({ method: "GET", url: "/api/v1/attendance/sessions?from=2026-07-02&to=2026-07-01", headers });
+    const excessive = await app.inject({ method: "GET", url: "/api/v1/attendance/sessions?from=2025-01-01&to=2026-07-01", headers });
+
+    expect(reversed.statusCode).toBe(400);
+    expect(reversed.json()).toMatchObject({ error: { code: "VALIDATION_ERROR", field: "to" } });
+    expect(excessive.statusCode).toBe(400);
+    expect(excessive.json()).toMatchObject({ error: { code: "VALIDATION_ERROR", field: "to" } });
   });
 });

@@ -11,6 +11,12 @@ const uuidSchema = z.string().uuid();
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u);
 const monthSchema = z.string().regex(/^\d{4}-\d{2}$/u);
 const instantSchema = z.string().datetime({ offset: true });
+const sessionRangeSchema = z.object({ from: dateSchema, to: dateSchema }).superRefine(({ from, to }, context) => {
+  const fromTime = Date.parse(`${from}T00:00:00.000Z`);
+  const toTime = Date.parse(`${to}T00:00:00.000Z`);
+  if (fromTime > toTime) context.addIssue({ code: "custom", path: ["to"], message: "Das Enddatum muss am oder nach dem Startdatum liegen." });
+  if ((toTime - fromTime) / 86_400_000 > 366) context.addIssue({ code: "custom", path: ["to"], message: "Der Zeitraum darf höchstens 366 Tage umfassen." });
+});
 const createSchema = z.object({ workDate: dateSchema, startedAt: instantSchema, endedAt: instantSchema }) satisfies z.ZodType<CreateWorkSessionRequest>;
 const updateSchema = createSchema.extend({ expectedVersion: z.number().int().min(1) }) satisfies z.ZodType<UpdateWorkSessionRequest>;
 const weekdayMinutesSchema = z.object({ monday: z.number().int().min(0).max(1440), tuesday: z.number().int().min(0).max(1440), wednesday: z.number().int().min(0).max(1440), thursday: z.number().int().min(0).max(1440), friday: z.number().int().min(0).max(1440), saturday: z.number().int().min(0).max(1440), sunday: z.number().int().min(0).max(1440) });
@@ -28,7 +34,7 @@ export function registerTimeTrackingRoutes(app: FastifyInstance, config: ApiConf
     const { month } = parseParams(request, z.object({ month: monthSchema })); return dependencies.service.getMonthlyOverview(attendance, month);
   }));
   app.get("/api/v1/attendance/sessions", (request, reply) => withContext(request, reply, config, dependencies.identity, ({ attendance }) => {
-    const { from, to } = parseQuery(request, z.object({ from: dateSchema, to: dateSchema })); return dependencies.service.listOwnSessions(attendance, from, to);
+    const { from, to } = parseQuery(request, sessionRangeSchema); return dependencies.service.listOwnSessions(attendance, from, to);
   }));
   for (const [path, method] of [["clock-in", "clockIn"], ["break-start", "startBreak"], ["break-end", "endBreak"], ["clock-out", "clockOut"]] as const) {
     app.post(`/api/v1/attendance/commands/${path}`, (request, reply) => withWritableContext(request, reply, config, dependencies.identity, ({ attendance }) => dependencies.service[method](attendance, requireKey(request))));

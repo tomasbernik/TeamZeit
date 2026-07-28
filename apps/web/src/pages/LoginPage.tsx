@@ -56,7 +56,7 @@ export function LoginPage() {
         </a>
         <p className="eyebrow">Willkommen</p>
         <h1 id="login-title">Einfach im Team arbeiten.</h1>
-        <p className="page-intro">Melde dich an, um deine Arbeitszeit und Abwesenheiten zu verwalten.</p>
+        <p className="page-intro">Melde dich an, um deine Arbeitszeit im Team zu verwalten.</p>
         <form className="login-form" onSubmit={(event) => void submitEmail(event)}>
           <label htmlFor="email">E-Mail</label>
           <input

@@ -6,10 +6,8 @@ import { useAuth } from "../auth/AuthProvider";
 const navigation = [
   { to: "/", label: "Heute", icon: "O", roles: ["owner", "admin", "manager", "employee"] },
   { to: "/attendance", label: "Zeiterfassung", icon: "Z", roles: ["owner", "admin", "manager", "employee", "auditor"] },
-  { to: "/absences", label: "Abwesenheiten", icon: "A", roles: ["owner", "admin", "manager", "employee"] },
   { to: "/employees", label: "Mitarbeitende", icon: "M", roles: ["owner", "admin", "manager", "auditor"] },
   { to: "/organisation-structure", label: "Struktur", icon: "O", roles: ["owner", "admin", "manager"] },
-  { to: "/settings", label: "Einstellungen", icon: "S", roles: ["owner", "admin"] },
 ] as const satisfies ReadonlyArray<{
   to: string;
   label: string;

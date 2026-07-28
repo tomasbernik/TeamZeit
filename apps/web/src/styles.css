@@ -139,7 +139,7 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   .app-shell { display: block; }
   .sidebar { position: fixed; z-index: 10; top: auto; bottom: 0; width: 100%; height: auto; padding: 8px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); border-top: 1px solid var(--line); border-right: 0; }
   .sidebar > .brand, .sidebar-footer, .organization-switcher { display: none; }
-  .sidebar nav { grid-template-columns: repeat(5, 1fr); gap: 2px; margin: 0; }
+  .sidebar nav { grid-template-columns: repeat(auto-fit, minmax(64px, 1fr)); gap: 2px; margin: 0; }
   .nav-link { flex-direction: column; justify-content: center; gap: 2px; min-height: 55px; padding: 4px 2px; font-size: 10px; }
   .nav-link > span { font-size: 19px; }
   .mobile-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line); background: white; }

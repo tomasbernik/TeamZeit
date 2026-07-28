@@ -121,7 +121,7 @@ export async function resolveCurrentContext(
     throw new IdentityError(500, "INTERNAL_ERROR", "Der Benutzerkontext konnte nicht geladen werden.");
   }
 
-  const memberships = (membershipsResult.data ?? []).flatMap((membership) => {
+  const memberships = (membershipsResult.data ?? []).filter((membership) => membership.status === "active").flatMap((membership) => {
     const organization = firstOrganization(membership.organization);
     if (!organization) return [];
 

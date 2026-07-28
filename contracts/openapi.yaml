@@ -123,7 +123,7 @@ paths:
     get:
       operationId: listOwnIntervals
       tags: [TimeTracking]
-      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { name: from, in: query, required: true, schema: { type: string, format: date } }, { name: to, in: query, required: true, schema: { type: string, format: date } }]
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { name: from, in: query, required: true, schema: { type: string, format: date }, description: Inclusive start date }, { name: to, in: query, required: true, schema: { type: string, format: date }, description: Inclusive end date; must not precede from and the range is limited to 366 days }]
       responses: { '200': { description: Own intervals } }
     post:
       operationId: createOwnInterval
