@@ -54,10 +54,11 @@ h1 { max-width: 720px; margin: 0; font-size: clamp(34px, 6vw, 58px); line-height
 .brand-centered { justify-content: center; margin-bottom: 38px; }
 .login-card h1 { font-size: clamp(34px, 8vw, 50px); }
 .login-card .page-intro { margin-bottom: 30px; }
-.primary-button, .secondary-button { width: 100%; min-height: 50px; margin-top: 10px; border: 0; border-radius: 14px; font-weight: 750; cursor: pointer; }
+.primary-button, .secondary-button, .danger-button { width: 100%; min-height: 50px; margin-top: 10px; border: 0; border-radius: 14px; font-weight: 750; cursor: pointer; }
 .compact-button { width: auto; min-width: 150px; padding: 0 18px; }
 .primary-button { color: white; background: var(--accent); }
 .secondary-button { color: var(--accent-dark); background: var(--accent-soft); }
+.danger-button { color: #8b1f2d; background: #fff0f2; }
 button:disabled { cursor: not-allowed; opacity: .48; }
 .config-note { margin: 20px 0 0; padding: 12px; border-radius: 12px; color: #6e5d24; background: #fff8dc; font-size: 13px; line-height: 1.45; }
 .error-note { margin: 16px 0 0; padding: 12px; border-radius: 12px; color: #7d1e2b; background: #fff0f2; font-size: 13px; line-height: 1.45; }

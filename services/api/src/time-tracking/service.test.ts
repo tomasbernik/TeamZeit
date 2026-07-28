@@ -53,6 +53,12 @@ describe("interval time tracking", () => {
     await service.setEmployeeWorkRule(context, context.membershipId, ids[20]!, { effectiveFrom: "2026-07-01", weekdayMinutes: { monday: 360, tuesday: 360, wednesday: 360, thursday: 360, friday: 360, saturday: 0, sunday: 0 } });
     expect(await service.getDailyOverview(context, "2026-07-17")).toMatchObject({ plannedMinutes: 360, balanceMinutes: -360 });
   });
+  it("returns the effective employee work rule for administration", async () => {
+    const { service } = setup();
+    const created = await service.setEmployeeWorkRule(context, context.membershipId, ids[20]!, { effectiveFrom: "2026-07-01", weekdayMinutes: { monday: 360, tuesday: 360, wednesday: 360, thursday: 360, friday: 300, saturday: 0, sunday: 0 } });
+    await expect(service.getEmployeeWorkRule(context, context.membershipId, "2026-07-17")).resolves.toEqual({ rule: created });
+    await expect(service.getEmployeeWorkRule(context, context.membershipId, "2026-06-30")).resolves.toEqual({});
+  });
   it("is idempotent and prevents a second open interval", async () => {
     const { service, repository } = setup(); const requestId = ids[20]!;
     const first = await service.clockIn(context, requestId); const retry = await service.clockIn(context, requestId);

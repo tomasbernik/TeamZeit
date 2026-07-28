@@ -23,15 +23,15 @@ The table defines ownership boundaries, not an implementation schedule.
 - Reporting reads authorised module projections; it does not become the owner of source records.
 - Scheduling may compare planned shifts to Time Tracking sessions through public read models, never by mutating attendance.
 
-## Suggested parallel work packages
+## Current implementation sequence
 
-After the foundation is accepted, independent tasks can be assigned as follows:
+The foundation and first employee attendance slice are implemented. Continue in this order:
 
-1. Identity/Tenancy schema and session context.
-2. Organisation Structure schema and manager scopes.
-3. Time Tracking domain calculations and state machine.
-4. API runtime skeleton plus contract validation.
-5. PWA shell and design system derived from the existing `stempeln` look.
-6. RLS and permission test harness.
+1. Stabilise employee administration, work rules, direct attendance intervals, and Month Closing.
+2. Complete PostgreSQL/RLS and browser verification for that slice.
+3. Implement Organisation Structure and effective manager scopes.
+4. Add manager attendance views only after scope-aware API and RLS enforcement.
+5. Add the Basic MVP reporting/export projection.
 
-Tasks 3 and 5 can start against shared DTOs. Database integration for all modules waits for task 1's membership context and task 6's test harness.
+Absence, Scheduling, Documents, and Notifications remain later modules and should not be used as shortcuts for
+missing MVP behaviour.

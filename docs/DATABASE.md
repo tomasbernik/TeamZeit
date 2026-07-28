@@ -1,6 +1,8 @@
 # Database model
 
-`database/schema.sql` is the executable reference model. It must be split into ordered migrations before the first shared environment is deployed.
+`database/schema.sql` is the architectural reference model. Ordered, append-only migration copies live in
+`database/migrations` and `supabase/migrations`; the matching files must stay byte-equivalent. Local and shared
+Supabase environments apply the `supabase/migrations` copies.
 
 ## Core relationships
 

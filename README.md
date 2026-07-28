@@ -1,6 +1,6 @@
 # TeamZeit
 
-TeamZeit is a mobile-first, multi-tenant workforce time-tracking application. The repository contains a runnable authenticated employee flow, shared API contracts, and tenant-isolated PostgreSQL storage for attendance.
+TeamZeit is a mobile-first, multi-tenant workforce time-tracking application. The repository contains authenticated employee and administrator flows, shared API contracts, and tenant-isolated PostgreSQL storage for attendance, employee administration, work rules, and month closing.
 
 ## Prerequisites
 
@@ -133,10 +133,11 @@ The seed data uses only fictional `example.test` users and fictional organisatio
 ## Repository structure
 
 ```text
-apps/web/          React/Vite application shell and placeholder pages
-services/api/      Fastify API runtime and server-side Supabase factory
+apps/web/          React/Vite PWA for employee attendance and administration
+services/api/      Fastify API, domain services, and PostgreSQL repositories
 contracts/         shared transport-safe TypeScript DTOs and OpenAPI contract
-database/          reference PostgreSQL model; not an applied migration
+database/          reference PostgreSQL model and canonical migration copies
+supabase/          locally applied migrations and fictional development seed
 docs/              module, database, and authorisation documentation
 ```
 
@@ -154,8 +155,13 @@ docs/              module, database, and authorisation documentation
 - installable PWA manifest and minimal application-shell service worker;
 - authenticated email OTP and Google login with protected routing and organisation selection;
 - functional Today dashboard for clock-in, breaks, and clock-out;
-- attendance day/month overviews and correction requests;
-- placeholder routes for Absences, Employees, and Settings;
+- attendance day/month overviews with direct creation, editing, and archiving of own work intervals;
+- organisation-local daily calculations, planned minutes, balance, holidays, and missing-clock-out state;
+- employee administration and effective-dated work rules;
+- month status, closing, and reopening commands with attendance mutation guards;
+- PostgreSQL repositories and migrations for the implemented MVP modules;
+- unit, migration, PostgreSQL integration, and employee attendance E2E tests;
+- placeholder routes for Absences and Settings;
 - environment-based configuration;
 - optional Supabase client initialisation;
 - API health and version root endpoints;
@@ -163,8 +169,11 @@ docs/              module, database, and authorisation documentation
 
 ## Not implemented yet
 
-- absence, employee, scheduling, document, approval, reporting, and settings logic;
+- organisation structure and manager-scope enforcement;
+- absence, scheduling, document, reporting, and settings logic;
+- invitation email delivery (the current administration flow records that delivery was requested);
 - file storage, notifications, and exports;
+- production-ready RLS coverage for every role/resource combination;
 - production deployment and monitoring.
 
 Read `ARCHITECTURE.md` and `AGENTS.md` before implementing a module.

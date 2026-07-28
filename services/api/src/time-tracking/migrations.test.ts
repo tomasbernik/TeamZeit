@@ -33,6 +33,8 @@ const workRulesMigration = readFileSync(resolve(repositoryRoot, "database/migrat
 const supabaseWorkRulesMigration = readFileSync(resolve(repositoryRoot, "supabase/migrations/20260718180000_employee_work_rules.sql"), "utf8");
 const openPerWorkdayMigration = readFileSync(resolve(repositoryRoot, "database/migrations/20260718190000_open_session_per_workday.sql"), "utf8");
 const supabaseOpenPerWorkdayMigration = readFileSync(resolve(repositoryRoot, "supabase/migrations/20260718190000_open_session_per_workday.sql"), "utf8");
+const workRuleUpsertMigration = readFileSync(resolve(repositoryRoot, "database/migrations/20260728170000_employee_work_rule_upsert.sql"), "utf8");
+const supabaseWorkRuleUpsertMigration = readFileSync(resolve(repositoryRoot, "supabase/migrations/20260728170000_employee_work_rule_upsert.sql"), "utf8");
 
 describe("time tracking database migrations", () => {
   it("persists idempotency keys with a tenant-scoped unique key", () => {
@@ -78,6 +80,12 @@ describe("time tracking database migrations", () => {
     expect(supabaseRolePrivilegesMigration).toBe(rolePrivilegesMigration);
     expect(supabaseWorkRulesMigration).toBe(workRulesMigration);
     expect(supabaseOpenPerWorkdayMigration).toBe(openPerWorkdayMigration);
+    expect(supabaseWorkRuleUpsertMigration).toBe(workRuleUpsertMigration);
+  });
+  it("updates same-day work rules and bounds rules inserted before future changes", () => {
+    expect(workRuleUpsertMigration).toContain("on conflict (organization_id, membership_id, effective_from) do update");
+    expect(workRuleUpsertMigration).toContain("select min(r.effective_from) into next_effective_from");
+    expect(workRuleUpsertMigration).toContain("actual_rule_id");
   });
 
   it("keeps work rules and holidays tenant-safe and effective-dated", () => {

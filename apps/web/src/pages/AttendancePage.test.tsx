@@ -26,6 +26,7 @@ describe("AttendancePage", () => {
   it("shows intervals and immediate edit actions", async () => { render(<AttendancePage />); await waitFor(() => expect(screen.getByText("08:00 – 12:00")).toBeInTheDocument()); expect(screen.getAllByRole("button", { name: "Bearbeiten" })).toHaveLength(1); expect(screen.getByRole("button", { name: "Intervall hinzufügen" })).toBeInTheDocument(); });
   it("shows monthly totals, closure status and actionable daily rows", async () => {
     const { endedAt: _endedAt, ...openSession } = session;
+    void _endedAt;
     vi.mocked(api.fetchMonthlyAttendance).mockResolvedValue({ month: "2026-07", days: [{ workDate: "2026-07-17", state: "requires_action", sessions: [{ ...openSession, issue: "missing_clock_out", state: "requires_action" }], workedMinutes: 240, breakMinutes: 30, recordedBreakMinutes: 0, automaticBreakMinutes: 30, plannedMinutes: 480, balanceMinutes: -240, isHoliday: false, requiresAction: true }], workedMinutes: 240, breakMinutes: 30, plannedMinutes: 480, balanceMinutes: -240, requiresAction: true });
     vi.mocked(monthClosingApi.fetchMonthClosure).mockResolvedValue({ organizationId: session.organizationId, membershipId: session.membershipId, monthStart: "2026-07-01", status: "closed" });
     render(<AttendancePage />);

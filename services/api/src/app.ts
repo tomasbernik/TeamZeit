@@ -12,6 +12,7 @@ import { TimeTrackingService } from "./time-tracking/service.js";
 import type { PeriodGuard } from "./time-tracking/types.js";
 import { EmployeeAdministrationService } from "./identity/administration.js";
 import { InMemoryEmployeeAdministrationRepository } from "./identity/memory-administration-repository.js";
+import { PostgresEmployeeAdministrationRepository } from "./identity/postgres-administration-repository.js";
 import { registerEmployeeAdministrationRoutes, type EmployeeAdministrationRouteDependencies } from "./identity/routes.js";
 import { InMemoryMonthClosingRepository } from "./month-closing/memory-repository.js";
 import { PostgresMonthClosingRepository } from "./month-closing/postgres-repository.js";
@@ -78,10 +79,26 @@ export function buildApp(
   });
 
   registerTimeTrackingRoutes(app, config, dependencies.timeTracking ?? createDefaultTimeTrackingDependencies(config, dependencies.identity));
-  registerEmployeeAdministrationRoutes(app, config, dependencies.employeeAdministration ?? { service: new EmployeeAdministrationService(new InMemoryEmployeeAdministrationRepository()), ...(dependencies.identity ? { identity: dependencies.identity } : {}) });
+  registerEmployeeAdministrationRoutes(app, config, dependencies.employeeAdministration ?? createDefaultEmployeeAdministrationDependencies(config, dependencies.identity));
   registerMonthClosingRoutes(app, config, dependencies.monthClosing ?? createDefaultMonthClosingDependencies(config, dependencies.identity));
 
   return app;
+}
+
+function createDefaultEmployeeAdministrationDependencies(
+  config: ApiConfig,
+  identity?: IdentityContextDependencies,
+): EmployeeAdministrationRouteDependencies {
+  const client = config.timeTrackingRepository === "postgres" ? createSupabaseServiceClient(config) : null;
+  if (config.timeTrackingRepository === "postgres" && !client) {
+    throw new Error("TIME_TRACKING_REPOSITORY=postgres requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
+  }
+  return {
+    service: new EmployeeAdministrationService(
+      client ? new PostgresEmployeeAdministrationRepository(client) : new InMemoryEmployeeAdministrationRepository(),
+    ),
+    ...(identity ? { identity } : {}),
+  };
 }
 
 function normalizeDependencies(dependencies: ApiDependencies | IdentityContextDependencies): ApiDependencies {

@@ -82,6 +82,11 @@ paths:
       parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { name: month, in: path, required: true, schema: { type: string, pattern: '^\d{4}-\d{2}$' } }]
       responses: { '200': { description: Monthly totals, content: { application/json: { schema: { $ref: '#/components/schemas/MonthlyAttendance' } } } } }
   /attendance/employees/{membershipId}/work-rule:
+    get:
+      operationId: getEmployeeWorkRule
+      tags: [TimeTracking]
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/MembershipId' }, { name: on, in: query, required: true, schema: { type: string, format: date } }]
+      responses: { '200': { description: Effective work rule or an empty object when no rule exists, content: { application/json: { schema: { $ref: '#/components/schemas/EmployeeWorkRuleResponse' } } } }, '403': { $ref: '#/components/responses/Forbidden' } }
     put:
       operationId: setEmployeeWorkRule
       tags: [TimeTracking]
@@ -197,6 +202,21 @@ components:
         weekdayMinutes: { type: object, required: [monday, tuesday, wednesday, thursday, friday, saturday, sunday], additionalProperties: false, properties: { monday: { type: integer, minimum: 0, maximum: 1440 }, tuesday: { type: integer, minimum: 0, maximum: 1440 }, wednesday: { type: integer, minimum: 0, maximum: 1440 }, thursday: { type: integer, minimum: 0, maximum: 1440 }, friday: { type: integer, minimum: 0, maximum: 1440 }, saturday: { type: integer, minimum: 0, maximum: 1440 }, sunday: { type: integer, minimum: 0, maximum: 1440 } } }
         breakThresholdMinutes: { type: integer, default: 360 }
         minimumBreakMinutes: { type: integer, default: 30 }
+    EmployeeWorkRule:
+      allOf:
+        - { $ref: '#/components/schemas/SetEmployeeWorkRule' }
+        - type: object
+          required: [id, organizationId, membershipId]
+          properties:
+            id: { type: string, format: uuid }
+            organizationId: { type: string, format: uuid }
+            membershipId: { type: string, format: uuid }
+            effectiveTo: { type: string, format: date }
+    EmployeeWorkRuleResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        rule: { $ref: '#/components/schemas/EmployeeWorkRule' }
     DailyAttendance:
       type: object
       required: [workDate, state, sessions, workedMinutes, breakMinutes, recordedBreakMinutes, automaticBreakMinutes, plannedMinutes, balanceMinutes, isHoliday, requiresAction]

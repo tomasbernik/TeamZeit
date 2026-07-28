@@ -1,6 +1,6 @@
 # TeamZeit Architecture
 
-Status: proposed foundation for MVP development
+Status: implemented MVP foundation; active feature development
 
 Last updated: 2026-07-16
 
@@ -35,32 +35,22 @@ flowchart LR
   ReadAPI --> DB
 ```
 
-## 4. Recommended repository layout
+## 4. Repository layout
 
 ```text
-/
-├─ ARCHITECTURE.md
-├─ AGENTS.md
-├─ docs/
-│  ├─ MODULES.md
-│  ├─ DATABASE.md
-│  └─ AUTHORIZATION.md
-├─ database/
-│  └─ schema.sql
-├─ contracts/
-│  ├─ README.md
-│  ├─ openapi.yaml
-│  └─ src/
-│     ├─ common.ts
-│     ├─ identity.ts
-│     ├─ time-tracking.ts
-│     └─ index.ts
-├─ apps/                 # future: employee and manager UI
-├─ services/             # future: API / server commands
-└─ tests/                # future: contract, RLS, integration, e2e
+apps/web/             React/Vite employee and administration PWA
+services/api/         Fastify API and module implementations
+contracts/            shared TypeScript DTOs and OpenAPI
+database/             reference schema and canonical migration copies
+supabase/             locally applied migrations, configuration, and seed
+tests/e2e/            Playwright critical browser flows
+docs/                 architecture, module, database, and authorisation rules
 ```
 
-This foundation intentionally does not create application modules under `apps/` or `services/` yet.
+The repository now contains a React/Vite PWA under `apps/web`, a Fastify API under `services/api`, shared
+contracts, ordered Supabase migrations, and automated unit, integration, and browser tests. The MVP currently
+implements Identity & Tenancy, employee Time Tracking, employee administration/work rules, and Month Closing.
+Organisation Structure and manager scope remain the next security dependency.
 
 ## 5. Runtime architecture
 
@@ -170,10 +160,8 @@ Accepted for the foundation:
 - immediate employee self-service with immutable audit history;
 - organisation-configured local time zone.
 
-Deferred until implementation planning:
+Still deferred:
 
-- frontend framework and monorepo tooling;
-- API runtime (Supabase Edge Functions versus a dedicated service);
 - notification provider;
 - payroll export formats;
 - exact retention periods and works-council requirements;

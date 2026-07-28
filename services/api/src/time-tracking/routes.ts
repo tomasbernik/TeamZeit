@@ -47,6 +47,12 @@ export function registerTimeTrackingRoutes(app: FastifyInstance, config: ApiConf
     const { membershipId } = parseParams(request, z.object({ membershipId: uuidSchema }));
     return dependencies.service.setEmployeeWorkRule(attendance, membershipId, requireKey(request), parseBody(request, workRuleSchema));
   }));
+  app.get("/api/v1/attendance/employees/:membershipId/work-rule", (request, reply) => withContext(request, reply, config, dependencies.identity, ({ attendance, role }) => {
+    if (role !== "owner" && role !== "admin") throw new TimeTrackingError("FORBIDDEN", "Nur Administration oder Inhaber dürfen Arbeitsregeln lesen.");
+    const { membershipId } = parseParams(request, z.object({ membershipId: uuidSchema }));
+    const { on } = parseQuery(request, z.object({ on: dateSchema }));
+    return dependencies.service.getEmployeeWorkRule(attendance, membershipId, on);
+  }));
 }
 
 function withWritableContext<T>(request: FastifyRequest, reply: FastifyReply, config: ApiConfig, identity: IdentityContextDependencies | undefined, handler: Handler<T>) {

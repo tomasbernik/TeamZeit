@@ -1,4 +1,4 @@
-import type { ClockCommandResponse, CreateWorkSessionRequest, ISODate, SetEmployeeWorkRuleRequest, TodayAttendanceResponse, UUID, UpdateWorkSessionRequest, WorkSessionDto, WorkSessionsResponse } from "@teamzeit/contracts";
+import type { ClockCommandResponse, CreateWorkSessionRequest, EmployeeWorkRuleResponse, ISODate, SetEmployeeWorkRuleRequest, TodayAttendanceResponse, UUID, UpdateWorkSessionRequest, WorkSessionDto, WorkSessionsResponse } from "@teamzeit/contracts";
 import { applyBreakRule, calculateGapMinutes, deriveAttendanceState, toWorkSessionDto, weekdayPlannedMinutes } from "./calculations.js";
 import { conflict, invalidState, validationError } from "./errors.js";
 import { localDateForInstant, monthBounds, nextDate, toIsoInstant } from "./time.js";
@@ -73,6 +73,15 @@ export class TimeTrackingService {
     const ruleId = this.dependencies.ids.uuid();
     const auditEvent = { id: this.dependencies.ids.uuid(), organizationId: context.organizationId, actorUserId: context.userId, actorMembershipId: context.membershipId, action: "employee_work_rule.set", entityType: "employee_work_rule", entityId: ruleId, occurredAt: toIsoInstant(this.dependencies.clock.now()), requestId, afterValues: input, metadata: { targetMembershipId: membershipId } };
     return this.dependencies.repository.setEmployeeWorkRule(context.organizationId, membershipId, ruleId, input, auditEvent);
+  }
+
+  public async getEmployeeWorkRule(
+    context: AttendanceMembershipContext,
+    membershipId: UUID,
+    workDate: ISODate,
+  ): Promise<EmployeeWorkRuleResponse> {
+    const rule = await this.dependencies.repository.findEffectiveWorkRule(context.organizationId, membershipId, workDate);
+    return rule ? { rule } : {};
   }
 
   public createSession(context: AttendanceMembershipContext, requestId: UUID, input: CreateWorkSessionRequest): Promise<WorkSessionDto> {

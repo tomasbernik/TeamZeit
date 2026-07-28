@@ -32,6 +32,10 @@ export interface SetEmployeeWorkRuleRequest {
   minimumBreakMinutes?: number | undefined;
 }
 
+export interface EmployeeWorkRuleResponse {
+  rule?: EmployeeWorkRuleDto;
+}
+
 export interface WorkBreakDto {
   id: UUID;
   startedAt: ISOInstant;
