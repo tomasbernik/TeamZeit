@@ -143,6 +143,40 @@ paths:
       tags: [TimeTracking]
       parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { $ref: '#/components/parameters/SessionId' }, { name: expectedVersion, in: query, required: true, schema: { type: integer, minimum: 1 } }]
       responses: { '200': { description: Interval archived immediately }, '409': { $ref: '#/components/responses/Conflict' } }
+  /organisation-structure:
+    get:
+      operationId: getOrganisationStructure
+      tags: [OrganisationStructure]
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { name: on, in: query, schema: { type: string, format: date } }]
+      responses: { '200': { description: Date-effective structure visible to the actor, content: { application/json: { schema: { $ref: '#/components/schemas/OrganisationStructure' } } } }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /organisation-structure/locations:
+    post:
+      operationId: createLocation
+      tags: [OrganisationStructure]
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/NamedStructure' } } } }
+      responses: { '200': { description: Location created and audited }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /organisation-structure/teams:
+    post:
+      operationId: createTeam
+      tags: [OrganisationStructure]
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/NamedStructure' } } } }
+      responses: { '200': { description: Team created and audited }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /organisation-structure/assignments:
+    post:
+      operationId: setTeamAssignment
+      tags: [OrganisationStructure]
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TeamAssignment' } } } }
+      responses: { '200': { description: Effective assignment created and audited }, '409': { $ref: '#/components/responses/Conflict' } }
+  /organisation-structure/manager-scopes:
+    post:
+      operationId: setManagerScope
+      tags: [OrganisationStructure]
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ManagerScope' } } } }
+      responses: { '200': { description: Effective manager scope created and audited }, '403': { $ref: '#/components/responses/Forbidden' } }
 components:
   securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }
   parameters:
@@ -155,6 +189,29 @@ components:
     Forbidden: { description: Active tenant membership or ownership missing }
     Conflict: { description: Invalid state, stale version, overlap, duplicate action, or closed period }
   schemas:
+    NamedStructure:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties: { name: { type: string, minLength: 1, maxLength: 120 }, locationId: { type: [string, 'null'], format: uuid } }
+    TeamAssignment:
+      type: object
+      additionalProperties: false
+      required: [membershipId, teamId, validFrom]
+      properties: { membershipId: { type: string, format: uuid }, teamId: { type: string, format: uuid }, validFrom: { type: string, format: date }, validUntil: { type: [string, 'null'], format: date }, primary: { type: boolean, default: true } }
+    ManagerScope:
+      type: object
+      additionalProperties: false
+      required: [managerMembershipId, scopeType, validFrom]
+      properties: { managerMembershipId: { type: string, format: uuid }, scopeType: { type: string, enum: [location, team] }, locationId: { type: string, format: uuid }, teamId: { type: string, format: uuid }, validFrom: { type: string, format: date }, validUntil: { type: [string, 'null'], format: date } }
+    OrganisationStructure:
+      type: object
+      required: [locations, teams, assignments, managerScopes]
+      properties:
+        locations: { type: array, items: { type: object } }
+        teams: { type: array, items: { type: object } }
+        assignments: { type: array, items: { $ref: '#/components/schemas/TeamAssignment' } }
+        managerScopes: { type: array, items: { $ref: '#/components/schemas/ManagerScope' } }
     MonthClosureCommand:
       type: object
       additionalProperties: false

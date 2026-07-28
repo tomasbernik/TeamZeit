@@ -4,7 +4,7 @@ import { AuthProvider, type AuthProviderDependencies } from "./auth/AuthProvider
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { AppLayout } from "./components/AppLayout";
 import { LoginPage } from "./pages/LoginPage";
-import { AbsencesPage, AttendancePage, EmployeesPage, SettingsPage, TodayPage } from "./pages/pages";
+import { AbsencesPage, AttendancePage, EmployeesPage, OrganisationStructurePage, SettingsPage, TodayPage } from "./pages/pages";
 
 export function App({ authDependencies }: { authDependencies?: AuthProviderDependencies }) {
   return (
@@ -17,6 +17,7 @@ export function App({ authDependencies }: { authDependencies?: AuthProviderDepen
             <Route path="attendance" element={<AttendancePage />} />
             <Route path="absences" element={<AbsencesPage />} />
             <Route path="employees" element={<EmployeesPage />} />
+            <Route path="organisation-structure" element={<OrganisationStructurePage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Route>

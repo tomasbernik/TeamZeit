@@ -20,7 +20,8 @@ insert into auth.users (
   ('10000000-0000-4000-8000-000000000004', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'admin@example.test', crypt('local-only-password', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Anton Admin"}', now(), now()),
   ('10000000-0000-4000-8000-000000000005', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'manager@example.test', crypt('local-only-password', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Mara Manager"}', now(), now()),
   ('10000000-0000-4000-8000-000000000006', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'auditor@example.test', crypt('local-only-password', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Artur Audit"}', now(), now()),
-  ('10000000-0000-4000-8000-000000000007', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'foreign.employee@example.test', crypt('local-only-password', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Frida Fremd"}', now(), now())
+  ('10000000-0000-4000-8000-000000000007', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'foreign.employee@example.test', crypt('local-only-password', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Frida Fremd"}', now(), now()),
+  ('10000000-0000-4000-8000-000000000008', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'inactive.admin@example.test', crypt('local-only-password', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Inaktive Admin"}', now(), now())
 on conflict (id) do nothing;
 
 -- GoTrue scans these token fields as strings when handling passwordless email
@@ -42,7 +43,8 @@ where id in (
   '10000000-0000-4000-8000-000000000004',
   '10000000-0000-4000-8000-000000000005',
   '10000000-0000-4000-8000-000000000006',
-  '10000000-0000-4000-8000-000000000007'
+  '10000000-0000-4000-8000-000000000007',
+  '10000000-0000-4000-8000-000000000008'
 );
 
 insert into public.organizations (id, name, slug, time_zone) values
@@ -57,7 +59,8 @@ insert into public.profiles (id, display_name) values
   ('10000000-0000-4000-8000-000000000004', 'Anton Admin'),
   ('10000000-0000-4000-8000-000000000005', 'Mara Manager'),
   ('10000000-0000-4000-8000-000000000006', 'Artur Audit'),
-  ('10000000-0000-4000-8000-000000000007', 'Frida Fremd')
+  ('10000000-0000-4000-8000-000000000007', 'Frida Fremd'),
+  ('10000000-0000-4000-8000-000000000008', 'Inaktive Admin')
 on conflict (id) do nothing;
 
 insert into public.memberships (id, organization_id, user_id, email, role, status, employee_number, employment_start) values
@@ -67,7 +70,8 @@ insert into public.memberships (id, organization_id, user_id, email, role, statu
   ('30000000-0000-4000-8000-000000000004', '20000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000004', 'admin@example.test', 'admin', 'active', 'N-ADM', '2026-01-01'),
   ('30000000-0000-4000-8000-000000000005', '20000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000005', 'manager@example.test', 'manager', 'active', 'N-MGR', '2026-01-01'),
   ('30000000-0000-4000-8000-000000000006', '20000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000006', 'auditor@example.test', 'auditor', 'active', 'N-AUD', '2026-01-01'),
-  ('30000000-0000-4000-8000-000000000007', '20000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000007', 'foreign.employee@example.test', 'employee', 'active', 'S-001', '2026-01-01')
+  ('30000000-0000-4000-8000-000000000007', '20000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000007', 'foreign.employee@example.test', 'employee', 'active', 'S-001', '2026-01-01'),
+  ('30000000-0000-4000-8000-000000000008', '20000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000008', 'inactive.admin@example.test', 'admin', 'inactive', 'N-INACTIVE', '2026-01-01')
 on conflict (organization_id, id) do nothing;
 
 insert into public.locations (id, organization_id, name) values
@@ -82,8 +86,8 @@ insert into public.team_members (organization_id, team_id, membership_id, valid_
   ('20000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', '2026-01-01')
 on conflict do nothing;
 
-insert into public.manager_scopes (id, organization_id, manager_membership_id, scope_type, team_id) values
-  ('60000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000005', 'team', '50000000-0000-4000-8000-000000000001')
+insert into public.manager_scopes (id, organization_id, manager_membership_id, scope_type, team_id, valid_from) values
+  ('60000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000005', 'team', '50000000-0000-4000-8000-000000000001', '2026-01-01')
 on conflict (id) do nothing;
 
 insert into public.work_sessions (id, organization_id, membership_id, work_date, started_at, ended_at, source, version) values
