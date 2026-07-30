@@ -32,11 +32,30 @@ custom SMTP configuration in Supabase.
 `services/api/src/month-closing` provides month status, close, and reopen commands. Time Tracking calls the
 module's period guard before interval mutations. Reopening is privileged, requires a reason, and is audited.
 
+### Organisation Structure and manager scope
+
+`services/api/src/organisation-structure` implements locations, teams, effective-dated employee assignments,
+and manager scopes. Attendance and organisation-structure reads enforce the effective scope for the target date
+at both the API and PostgreSQL/RLS layers. PostgreSQL integration tests cover in-scope and out-of-scope manager
+behaviour; the browser suite covers access to the administrator organisation-structure sections.
+
+### Basic attendance reporting
+
+`services/api/src/reporting` provides scope-aware monthly attendance summaries and CSV export. Reports reuse the
+same tenant and effective manager-scope boundaries as interactive attendance reads; reporting never broadens a
+caller's access to source attendance records.
+
+### Absence
+
+`services/api/src/absence` implements employee absence request/list/cancel and scoped manager/admin review.
+Commands are idempotent and audited. PostgreSQL RLS permits own, tenant-privileged, and effective manager-scope
+reads; authenticated clients cannot mutate absence tables directly. Leave balances and attachments are deferred.
+
 ### Database and verification
 
 Canonical migration copies live in both `database/migrations` and `supabase/migrations`; keep matching files
 byte-equivalent. Local Supabase applies the `supabase` copies and fictional seed data. Run `pnpm check` for the
 workspace and, with local Supabase running and configured, `pnpm test:integration` followed by `pnpm test:e2e`.
 
-Manager-scoped attendance and RLS policies are intentionally not part of the current shipped surface. They must
-be implemented and tested before manager attendance lists or correction review are exposed.
+Manager-scoped attendance and RLS policies are part of the current MVP surface. New manager-facing features must
+reuse these effective-scope rules and add denied out-of-scope and cross-tenant regression tests.

@@ -2,7 +2,7 @@
 
 Status: implemented MVP foundation; active feature development
 
-Last updated: 2026-07-16
+Last updated: 2026-07-30
 
 ## 1. Purpose
 
@@ -49,8 +49,10 @@ docs/                 architecture, module, database, and authorisation rules
 
 The repository now contains a React/Vite PWA under `apps/web`, a Fastify API under `services/api`, shared
 contracts, ordered Supabase migrations, and automated unit, integration, and browser tests. The MVP currently
-implements Identity & Tenancy, employee Time Tracking, employee administration/work rules, and Month Closing.
-Organisation Structure and manager scope remain the next security dependency.
+implements Identity & Tenancy, employee Time Tracking, employee administration/work rules, Month Closing,
+Organisation Structure with effective manager scopes, and basic scope-aware attendance reporting with CSV
+export. The current priority is end-to-end stabilisation and release readiness before another product module is
+introduced.
 
 ## 5. Runtime architecture
 

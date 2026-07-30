@@ -1,6 +1,6 @@
 # TeamZeit
 
-TeamZeit is a mobile-first, multi-tenant workforce time-tracking application. The repository contains authenticated employee and administrator flows, shared API contracts, and tenant-isolated PostgreSQL storage for attendance, employee administration, work rules, and month closing.
+TeamZeit is a mobile-first, multi-tenant workforce time-tracking application. The repository contains authenticated employee, manager, and administrator flows, shared API contracts, and tenant-isolated PostgreSQL storage for attendance, employee administration, work rules, organisation structure, manager scopes, month closing, and basic attendance reporting.
 
 ## Prerequisites
 
@@ -167,6 +167,7 @@ docs/              module, database, and authorisation documentation
 - month status, closing, and reopening commands with attendance mutation guards;
 - PostgreSQL repositories and migrations for the implemented MVP modules;
 - scope-aware monthly attendance reporting with CSV export;
+- absence requests with employee cancellation and scope-aware manager/administrator review;
 - unit, migration, PostgreSQL integration, and employee attendance E2E tests;
 - environment-based configuration;
 - optional Supabase client initialisation;
@@ -175,10 +176,9 @@ docs/              module, database, and authorisation documentation
 
 ## Not implemented yet
 
-- manager-scope enforcement for organisation structure;
-- absence, scheduling, document, reporting, and settings logic;
+- absence balances and attachments, scheduling, document, notification, and settings logic;
 - file storage, notifications, and payroll-specific exports;
-- production-ready RLS coverage for every role/resource combination;
+- production-ready RLS coverage for future modules and resources;
 - production deployment and monitoring.
 
 Read `ARCHITECTURE.md` and `AGENTS.md` before implementing a module.

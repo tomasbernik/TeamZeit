@@ -139,7 +139,7 @@ paths:
         - { $ref: '#/components/parameters/OrganizationId' }
         - { name: month, in: path, required: true, schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$' } }
       responses:
-        '200': { description: Scope-aware monthly attendance report }
+        '200': { description: Scope-aware monthly attendance report, content: { application/json: { schema: { $ref: '#/components/schemas/MonthlyAttendanceReport' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
   /attendance/sessions/{sessionId}:
     put:
@@ -187,6 +187,32 @@ paths:
       parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ManagerScope' } } } }
       responses: { '200': { description: Effective manager scope created and audited }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /absences:
+    get:
+      operationId: listAbsences
+      tags: [Absence]
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }]
+      responses: { '200': { description: Authorised absence requests, content: { application/json: { schema: { $ref: '#/components/schemas/AbsenceList' } } } } }
+    post:
+      operationId: createAbsence
+      tags: [Absence]
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateAbsence' } } } }
+      responses: { '200': { description: Request created, content: { application/json: { schema: { $ref: '#/components/schemas/AbsenceRequest' } } } } }
+  /absences/{absenceId}/review:
+    post:
+      operationId: reviewAbsence
+      tags: [Absence]
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { name: absenceId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewAbsence' } } } }
+      responses: { '200': { description: Scoped request reviewed } }
+  /absences/{absenceId}/cancel:
+    post:
+      operationId: cancelAbsence
+      tags: [Absence]
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }, { $ref: '#/components/parameters/IdempotencyKey' }, { name: absenceId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [expectedVersion], properties: { expectedVersion: { type: integer, minimum: 1 } } } } } }
+      responses: { '200': { description: Pending own request cancelled } }
 components:
   securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }
   parameters:
@@ -199,6 +225,26 @@ components:
     Forbidden: { description: Active tenant membership or ownership missing }
     Conflict: { description: Invalid state, stale version, overlap, duplicate action, or closed period }
   schemas:
+    CreateAbsence:
+      type: object
+      additionalProperties: false
+      required: [type, startsOn, endsOn]
+      properties: { type: { type: string, enum: [vacation, sickness, other] }, startsOn: { type: string, format: date }, endsOn: { type: string, format: date }, employeeNote: { type: string, maxLength: 1000 } }
+    ReviewAbsence:
+      type: object
+      additionalProperties: false
+      required: [decision, expectedVersion]
+      properties: { decision: { type: string, enum: [approved, rejected] }, reviewNote: { type: string, maxLength: 1000 }, expectedVersion: { type: integer, minimum: 1 } }
+    AbsenceRequest:
+      type: object
+      additionalProperties: false
+      required: [id, organizationId, membershipId, type, startsOn, endsOn, status, createdAt, version]
+      properties: { id: { type: string, format: uuid }, organizationId: { type: string, format: uuid }, membershipId: { type: string, format: uuid }, type: { type: string, enum: [vacation, sickness, other] }, startsOn: { type: string, format: date }, endsOn: { type: string, format: date }, status: { type: string, enum: [pending, approved, rejected, cancelled] }, employeeNote: { type: string }, reviewNote: { type: string }, reviewedByMembershipId: { type: string, format: uuid }, reviewedAt: { type: string, format: date-time }, createdAt: { type: string, format: date-time }, version: { type: integer, minimum: 1 } }
+    AbsenceList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/AbsenceRequest' } } }
     NamedStructure:
       type: object
       additionalProperties: false
@@ -218,10 +264,30 @@ components:
       type: object
       required: [locations, teams, assignments, managerScopes]
       properties:
-        locations: { type: array, items: { type: object } }
-        teams: { type: array, items: { type: object } }
-        assignments: { type: array, items: { $ref: '#/components/schemas/TeamAssignment' } }
-        managerScopes: { type: array, items: { $ref: '#/components/schemas/ManagerScope' } }
+        locations: { type: array, items: { $ref: '#/components/schemas/Location' } }
+        teams: { type: array, items: { $ref: '#/components/schemas/Team' } }
+        assignments: { type: array, items: { $ref: '#/components/schemas/TeamAssignmentDto' } }
+        managerScopes: { type: array, items: { $ref: '#/components/schemas/ManagerScopeDto' } }
+    Location:
+      type: object
+      additionalProperties: false
+      required: [id, organizationId, name]
+      properties: { id: { type: string, format: uuid }, organizationId: { type: string, format: uuid }, name: { type: string }, archivedAt: { type: string, format: date-time } }
+    Team:
+      type: object
+      additionalProperties: false
+      required: [id, organizationId, name]
+      properties: { id: { type: string, format: uuid }, organizationId: { type: string, format: uuid }, locationId: { type: string, format: uuid }, name: { type: string }, archivedAt: { type: string, format: date-time } }
+    TeamAssignmentDto:
+      type: object
+      additionalProperties: false
+      required: [organizationId, teamId, membershipId, validFrom, primary]
+      properties: { organizationId: { type: string, format: uuid }, teamId: { type: string, format: uuid }, membershipId: { type: string, format: uuid }, validFrom: { type: string, format: date }, validUntil: { type: string, format: date }, primary: { type: boolean } }
+    ManagerScopeDto:
+      type: object
+      additionalProperties: false
+      required: [id, organizationId, managerMembershipId, scopeType, validFrom]
+      properties: { id: { type: string, format: uuid }, organizationId: { type: string, format: uuid }, managerMembershipId: { type: string, format: uuid }, scopeType: { type: string, enum: [location, team] }, locationId: { type: string, format: uuid }, teamId: { type: string, format: uuid }, validFrom: { type: string, format: date }, validUntil: { type: string, format: date } }
     MonthClosureCommand:
       type: object
       additionalProperties: false
@@ -239,7 +305,7 @@ components:
       properties: { email: { type: string, format: email }, role: { type: string, enum: [admin, manager, employee, auditor] } }
     WorkSession:
       type: object
-      required: [id, organizationId, membershipId, workDate, startedAt, state, source, version]
+      required: [id, organizationId, membershipId, workDate, startedAt, breaks, state, source, version]
       properties:
         id: { type: string, format: uuid }
         organizationId: { type: string, format: uuid }
@@ -247,12 +313,18 @@ components:
         workDate: { type: string, format: date }
         startedAt: { type: string, format: date-time }
         endedAt: { type: string, format: date-time }
+        breaks: { type: array, items: { $ref: '#/components/schemas/WorkBreak' } }
         workedMinutes: { type: integer, minimum: 0 }
         calculationEndedAt: { type: string, format: date-time }
         issue: { type: string, enum: [missing_clock_out] }
         state: { type: string, enum: [not_started, working, completed, requires_action] }
         source: { type: string, enum: [clock, manual, admin_import] }
         version: { type: integer, minimum: 1 }
+    WorkBreak:
+      type: object
+      additionalProperties: false
+      required: [id, startedAt]
+      properties: { id: { type: string, format: uuid }, startedAt: { type: string, format: date-time }, endedAt: { type: string, format: date-time }, durationMinutes: { type: integer, minimum: 0 } }
     CreateInterval:
       type: object
       additionalProperties: false
@@ -273,12 +345,14 @@ components:
       allOf:
         - { $ref: '#/components/schemas/SetEmployeeWorkRule' }
         - type: object
-          required: [id, organizationId, membershipId]
+          required: [id, organizationId, membershipId, breakThresholdMinutes, minimumBreakMinutes]
           properties:
             id: { type: string, format: uuid }
             organizationId: { type: string, format: uuid }
             membershipId: { type: string, format: uuid }
             effectiveTo: { type: string, format: date }
+            breakThresholdMinutes: { type: integer }
+            minimumBreakMinutes: { type: integer }
     EmployeeWorkRuleResponse:
       type: object
       additionalProperties: false
@@ -294,3 +368,18 @@ components:
       type: object
       required: [month, days, workedMinutes, breakMinutes, plannedMinutes, balanceMinutes, requiresAction]
       properties: { month: { type: string }, days: { type: array, items: { $ref: '#/components/schemas/DailyAttendance' } }, workedMinutes: { type: integer }, breakMinutes: { type: integer }, plannedMinutes: { type: integer }, balanceMinutes: { type: integer }, requiresAction: { type: boolean } }
+    MonthlyAttendanceReportRow:
+      type: object
+      additionalProperties: false
+      required: [membershipId, email, workedMinutes, sessionCount, daysWorked, openSessionCount]
+      properties: { membershipId: { type: string, format: uuid }, email: { type: string, format: email }, workedMinutes: { type: integer }, sessionCount: { type: integer }, daysWorked: { type: integer }, openSessionCount: { type: integer } }
+    MonthlyAttendanceReportTotals:
+      type: object
+      additionalProperties: false
+      required: [workedMinutes, sessionCount, daysWorked, openSessionCount]
+      properties: { workedMinutes: { type: integer }, sessionCount: { type: integer }, daysWorked: { type: integer }, openSessionCount: { type: integer } }
+    MonthlyAttendanceReport:
+      type: object
+      additionalProperties: false
+      required: [organizationId, month, rows, totals]
+      properties: { organizationId: { type: string, format: uuid }, month: { type: string }, rows: { type: array, items: { $ref: '#/components/schemas/MonthlyAttendanceReportRow' } }, totals: { $ref: '#/components/schemas/MonthlyAttendanceReportTotals' } }

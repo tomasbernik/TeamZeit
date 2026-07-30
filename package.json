@@ -17,6 +17,7 @@
     "lint": "eslint .",
     "test:integration": "pnpm --filter @teamzeit/api test:integration",
     "test:e2e": "playwright test",
+    "test:staging": "node scripts/staging-smoke.mjs",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"

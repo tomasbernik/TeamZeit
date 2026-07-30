@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthProvider";
 const navigation = [
   { to: "/", label: "Heute", icon: "O", roles: ["owner", "admin", "manager", "employee"] },
   { to: "/attendance", label: "Zeiterfassung", icon: "Z", roles: ["owner", "admin", "manager", "employee", "auditor"] },
+  { to: "/absences", label: "Abwesenheit", icon: "A", roles: ["owner", "admin", "manager", "employee", "auditor"] },
   { to: "/employees", label: "Mitarbeitende", icon: "M", roles: ["owner", "admin", "manager", "auditor"] },
   { to: "/organisation-structure", label: "Struktur", icon: "O", roles: ["owner", "admin", "manager"] },
   { to: "/reports", label: "Berichte", icon: "B", roles: ["owner", "admin", "manager", "auditor"] },

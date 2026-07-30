@@ -1,0 +1,27 @@
+name: Staging smoke test
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: TeamZeit API origin, without /api/v1
+        required: true
+        type: string
+      web_url:
+        description: TeamZeit web origin
+        required: true
+        type: string
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run anonymous staging checks
+        env:
+          STAGING_API_URL: ${{ inputs.api_url }}
+          STAGING_WEB_URL: ${{ inputs.web_url }}
+        run: node scripts/staging-smoke.mjs

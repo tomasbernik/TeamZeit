@@ -27,6 +27,10 @@ import { InMemoryReportingRepository } from "./reporting/memory-repository.js";
 import { PostgresReportingRepository } from "./reporting/postgres-repository.js";
 import { registerReportingRoutes, type ReportingRouteDependencies } from "./reporting/routes.js";
 import { ReportingService } from "./reporting/service.js";
+import { AbsenceService } from "./absence/service.js";
+import { InMemoryAbsenceRepository } from "./absence/memory-repository.js";
+import { PostgresAbsenceRepository } from "./absence/postgres-repository.js";
+import { registerAbsenceRoutes, type AbsenceRouteDependencies } from "./absence/routes.js";
 
 export interface ApiDependencies {
   identity?: IdentityContextDependencies;
@@ -35,6 +39,7 @@ export interface ApiDependencies {
   monthClosing?: MonthClosingRouteDependencies;
   organisationStructure?: OrganisationStructureRouteDependencies;
   reporting?: ReportingRouteDependencies;
+  absence?: AbsenceRouteDependencies;
   readinessCheck?: () => Promise<boolean>;
 }
 
@@ -112,8 +117,15 @@ export function buildApp(
   registerMonthClosingRoutes(app, config, dependencies.monthClosing ?? createDefaultMonthClosingDependencies(config, dependencies.identity));
   registerOrganisationStructureRoutes(app, config, dependencies.organisationStructure ?? createDefaultOrganisationStructureDependencies(config, dependencies.identity));
   registerReportingRoutes(app, config, dependencies.reporting ?? createDefaultReportingDependencies(config, dependencies.identity));
+  registerAbsenceRoutes(app, config, dependencies.absence ?? createDefaultAbsenceDependencies(config, dependencies.identity));
 
   return app;
+}
+
+function createDefaultAbsenceDependencies(config: ApiConfig, identity?: IdentityContextDependencies): AbsenceRouteDependencies {
+  const client = config.timeTrackingRepository === "postgres" ? createSupabaseServiceClient(config) : null;
+  if (config.timeTrackingRepository === "postgres" && !client) throw new Error("TIME_TRACKING_REPOSITORY=postgres requires Supabase server credentials.");
+  return { service: new AbsenceService(client ? new PostgresAbsenceRepository(client) : new InMemoryAbsenceRepository()), ...(identity ? { identity } : {}) };
 }
 
 function createDefaultEmployeeAdministrationDependencies(
@@ -134,7 +146,7 @@ function createDefaultEmployeeAdministrationDependencies(
 }
 
 function normalizeDependencies(dependencies: ApiDependencies | IdentityContextDependencies): ApiDependencies {
-  if ("identity" in dependencies || "timeTracking" in dependencies || "employeeAdministration" in dependencies || "monthClosing" in dependencies || "organisationStructure" in dependencies || "reporting" in dependencies || "readinessCheck" in dependencies) {
+  if ("identity" in dependencies || "timeTracking" in dependencies || "employeeAdministration" in dependencies || "monthClosing" in dependencies || "organisationStructure" in dependencies || "reporting" in dependencies || "absence" in dependencies || "readinessCheck" in dependencies) {
     return dependencies;
   }
 

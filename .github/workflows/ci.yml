@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+
+  postgres-and-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec supabase start
+      - run: pnpm db:local:reset
+      - name: Run PostgreSQL and RLS tests
+        shell: bash
+        run: |
+          set -a
+          eval "$(pnpm exec supabase status -o env)"
+          set +a
+          export API_URL
+          export PUBLISHABLE_KEY
+          export SECRET_KEY
+          export JWT_SECRET
+          export TIME_TRACKING_REPOSITORY=postgres
+          pnpm test:integration
+      - name: Run browser tests
+        shell: bash
+        run: |
+          set -a
+          eval "$(pnpm exec supabase status -o env)"
+          set +a
+          export SUPABASE_URL="$API_URL"
+          export SUPABASE_PUBLISHABLE_KEY="$PUBLISHABLE_KEY"
+          export SUPABASE_SECRET_KEY="$SECRET_KEY"
+          export VITE_SUPABASE_URL="$API_URL"
+          export VITE_SUPABASE_PUBLISHABLE_KEY="$PUBLISHABLE_KEY"
+          export TIME_TRACKING_REPOSITORY=postgres
+          pnpm test:e2e

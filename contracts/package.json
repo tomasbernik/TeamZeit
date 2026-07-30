@@ -3,10 +3,17 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run --passWithNoTests",
+    "generate:openapi": "openapi-typescript openapi.yaml -o src/openapi.generated.ts --default-non-nullable=false",
+    "check:openapi": "openapi-typescript openapi.yaml -o src/openapi.generated.ts --default-non-nullable=false --check && tsc -p tsconfig.json --noEmit",
+    "test": "pnpm check:openapi && vitest run --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.13.0"
   }
 }

@@ -46,13 +46,13 @@ For the initial staging deployment, link the confirmed existing `CigApp` project
 Keep its database password and server secret outside Git.
 
 ```powershell
-npx supabase login
-npx supabase link --project-ref YOUR_PROJECT_REF
-npx supabase migration list
-npx supabase db dump --linked --schema public --file .supabase/backups/pre-teamzeit-schema.sql
-npx supabase db dump --linked --schema public --data-only --use-copy --file .supabase/backups/pre-teamzeit-data.sql
-npx supabase db push --linked --dry-run
-npx supabase db push
+pnpm exec supabase login
+pnpm exec supabase link --project-ref YOUR_PROJECT_REF
+pnpm exec supabase migration list --linked
+pnpm exec supabase db dump --linked --schema public --file .supabase/backups/pre-teamzeit-schema.sql
+pnpm exec supabase db dump --linked --schema public --data-only --use-copy --file .supabase/backups/pre-teamzeit-data.sql
+pnpm exec supabase db push --linked --dry-run
+pnpm exec supabase db push --linked
 ```
 
 Do not use `--include-seed` against staging or production. After the push, verify
@@ -166,8 +166,26 @@ Verify:
 2. Opening `/login` and refreshing it does not return 404.
 3. The owner receives an OTP, signs in, and sees the expected organisation.
 4. Clock in/out and an attendance read work.
-5. An unauthenticated API request is rejected.
-6. Browser developer tools show no server secret.
+5. Create an absence request, verify that an overlapping request is rejected,
+   then approve or reject the original request with an authorised account.
+6. Confirm that a manager cannot see an out-of-scope absence and that an auditor
+   has no create, cancel, approve, or reject controls.
+7. An unauthenticated API request, including `/api/v1/absences`, is rejected.
+8. Browser developer tools show no server secret.
+
+Run the repeatable anonymous portion of this checklist from the repository root:
+
+```powershell
+$env:STAGING_API_URL = "https://YOUR-API-HOST"
+$env:STAGING_WEB_URL = "https://YOUR-WEB-HOST"
+pnpm test:staging
+```
+
+The same check is available as the manually dispatched `Staging smoke test`
+GitHub Actions workflow. It verifies liveness, dependency readiness, the login
+route, security headers, CORS, request IDs, and rejection of unauthenticated API
+and Absence access. OTP and authorised business flows remain manual because the
+smoke test must not store staging credentials.
 
 For an application rollback, redeploy the last known-good Render commit. Database
 migrations are forward-only: do not edit an applied migration. A database rollback

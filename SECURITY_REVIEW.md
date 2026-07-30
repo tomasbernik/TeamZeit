@@ -70,11 +70,12 @@ Status: fixed.
 
 ### M-004: Contract compatibility is manual
 
-Status: not changed.
+Status: fixed.
 
-OpenAPI and TypeScript contracts largely agree for reviewed time tracking shapes, headers, and error envelopes. There is no automated OpenAPI-to-TypeScript compatibility gate, so drift can enter unnoticed.
-
-Recommendation: add a contract compatibility check in CI once contract generation or schema validation tooling is selected.
+The contracts workspace generates TypeScript definitions from `contracts/openapi.yaml` and checks that the
+committed generated file is current. Compile-time bidirectional assignability assertions cover the public DTOs
+represented by OpenAPI component schemas. The workspace test command runs both checks, so the root `pnpm check`
+fails when the OpenAPI document and TypeScript contracts drift.
 
 ## Low
 

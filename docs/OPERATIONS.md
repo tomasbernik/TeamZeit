@@ -11,6 +11,9 @@ is processed. Record the responsible person and evidence date for every item.
 - Alert after two consecutive `/ready` failures from an external HTTPS monitor.
 - Alert on elevated HTTP `5xx` responses and authentication failures. Use the
   `X-Request-Id` response header to correlate a user report with API logs.
+- Track `5xx` rates for `/api/v1/absences` separately from expected `400`
+  overlap validation responses. Alert on two consecutive `/ready` failures or a
+  sustained Absence `5xx` increase; do not alert on normal validation errors.
 - Never include access tokens, Supabase secrets, attendance bodies, or employee
   email addresses in monitoring labels or alert messages.
 
@@ -47,6 +50,22 @@ Before deployment run `pnpm check`, reset local Supabase, and run integration an
 browser suites. Apply migrations before starting code that depends on them.
 Application rollback uses a known-good Render commit. Database changes remain
 forward-only and require a corrective migration.
+
+The GitHub `CI` workflow runs the workspace gate, a clean local Supabase reset,
+PostgreSQL/RLS integration tests, and browser tests for every pull request and
+push to `main`. Do not merge or deploy a revision with a failing or cancelled
+workflow.
+
+After deployment run `pnpm test:staging` with `STAGING_API_URL` and
+`STAGING_WEB_URL`, or dispatch the `Staging smoke test` workflow. Record the
+commit SHA, migration list, CI run URL, smoke-test result, deployer, and UTC
+timestamp in the release evidence. The smoke test contains no credentials and
+does not mutate staging data.
+
+For an Absence release, also record manual evidence that overlapping active
+requests are rejected, manager scope hides an out-of-scope request, and the
+auditor remains read-only. Use fictional staging data and remove or cancel it
+after verification.
 
 ## Required external configuration
 
