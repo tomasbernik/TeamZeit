@@ -1,20 +1,162 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
+
 import type { ApiConfig } from "../config/env.js";
-import { resolveCurrentContext, type IdentityContextDependencies } from "../identity/context.js";
+import {
+  IdentityError,
+  resolveCurrentContext,
+  type IdentityContextDependencies,
+} from "../identity/context.js";
 import { TimeTrackingError } from "../time-tracking/errors.js";
 import { AbsenceService } from "./service.js";
-const uuid=z.string().uuid(), date=z.string().date();
-const create=z.object({type:z.enum(["vacation","sickness","other"]),startsOn:date,endsOn:date,employeeNote:z.string().max(1000).optional()});
-const review=z.object({decision:z.enum(["approved","rejected"]),reviewNote:z.string().max(1000).optional(),expectedVersion:z.number().int().positive()});
-export interface AbsenceRouteDependencies {service:AbsenceService;identity?:IdentityContextDependencies}
-export function registerAbsenceRoutes(app:FastifyInstance,config:ApiConfig,d:AbsenceRouteDependencies){
-  const actor=async(r:FastifyRequest)=>{const org=one(r.headers["x-organization-id"]);if(!org||!uuid.safeParse(org).success)throw new TimeTrackingError("FORBIDDEN","Organisation erforderlich.");const c=await resolveCurrentContext(config,r.headers.authorization,d.identity);const m=c.memberships.find(x=>x.organization.id===org);if(!m)throw new TimeTrackingError("FORBIDDEN","Keine aktive Mitgliedschaft.");return{organizationId:org,membershipId:m.id,userId:c.user.id,role:m.role}};
-  app.get("/api/v1/absences",async(r,p)=>run(p,r,async()=>d.service.list(await actor(r))));
-  app.post("/api/v1/absences",async(r,p)=>run(p,r,async()=>d.service.create(await actor(r),key(r),create.parse(r.body))));
-  app.post("/api/v1/absences/:id/cancel",async(r,p)=>run(p,r,async()=>{const q=z.object({id:uuid}).parse(r.params);const b=z.object({expectedVersion:z.number().int().positive()}).parse(r.body);return d.service.cancel(await actor(r),q.id,key(r),b.expectedVersion)}));
-  app.post("/api/v1/absences/:id/review",async(r,p)=>run(p,r,async()=>{const q=z.object({id:uuid}).parse(r.params);return d.service.review(await actor(r),q.id,key(r),review.parse(r.body))}));
+
+const uuid = z.string().uuid();
+const date = z.string().date();
+const create = z.object({
+  type: z.enum(["vacation", "sickness", "other"]),
+  startsOn: date,
+  endsOn: date,
+  employeeNote: z.string().max(1000).optional(),
+});
+const review = z.object({
+  decision: z.enum(["approved", "rejected"]),
+  reviewNote: z.string().max(1000).optional(),
+  expectedVersion: z.number().int().positive(),
+});
+
+export interface AbsenceRouteDependencies {
+  service: AbsenceService;
+  identity?: IdentityContextDependencies;
 }
-async function run(p:FastifyReply,r:FastifyRequest,f:()=>Promise<unknown>){try{return await f()}catch(e){if(e instanceof TimeTrackingError)return p.status(e.code==="FORBIDDEN"?403:e.code==="NOT_FOUND"?404:e.code==="VALIDATION_ERROR"?400:e.code==="CONFLICT"?409:500).send({error:{code:e.code,message:e.message,...(e.field?{field:e.field}:{}),requestId:r.id}});if(e instanceof z.ZodError)return p.status(400).send({error:{code:"VALIDATION_ERROR",message:"Ungültige Anfragedaten.",requestId:r.id}});r.log.error(e);return p.status(500).send({error:{code:"INTERNAL_ERROR",message:"Interner Fehler.",requestId:r.id}})}}
-function key(r:FastifyRequest){const v=one(r.headers["idempotency-key"]);if(!v||!uuid.safeParse(v).success)throw new TimeTrackingError("VALIDATION_ERROR","Gültiger Idempotency-Key erforderlich.");return v}
-function one(v:string|string[]|undefined){return Array.isArray(v)?v[0]:v}
+
+export function registerAbsenceRoutes(
+  app: FastifyInstance,
+  config: ApiConfig,
+  dependencies: AbsenceRouteDependencies,
+) {
+  const actor = async (request: FastifyRequest) => {
+    const context = await resolveCurrentContext(
+      config,
+      request.headers.authorization,
+      dependencies.identity,
+    );
+    const organizationId = one(request.headers["x-organization-id"]);
+    if (!organizationId || !uuid.safeParse(organizationId).success) {
+      throw new TimeTrackingError("FORBIDDEN", "Organisation erforderlich.");
+    }
+    const membership = context.memberships.find(
+      (item) => item.organization.id === organizationId,
+    );
+    if (!membership) {
+      throw new TimeTrackingError("FORBIDDEN", "Keine aktive Mitgliedschaft.");
+    }
+    return {
+      organizationId,
+      membershipId: membership.id,
+      userId: context.user.id,
+      role: membership.role,
+    };
+  };
+
+  app.get("/api/v1/absences", async (request, reply) =>
+    run(reply, request, async () => dependencies.service.list(await actor(request))),
+  );
+  app.post("/api/v1/absences", async (request, reply) =>
+    run(reply, request, async () =>
+      dependencies.service.create(await actor(request), key(request), create.parse(request.body)),
+    ),
+  );
+  app.post("/api/v1/absences/:id/cancel", async (request, reply) =>
+    run(reply, request, async () => {
+      const params = z.object({ id: uuid }).parse(request.params);
+      const body = z
+        .object({ expectedVersion: z.number().int().positive() })
+        .parse(request.body);
+      return dependencies.service.cancel(
+        await actor(request),
+        params.id,
+        key(request),
+        body.expectedVersion,
+      );
+    }),
+  );
+  app.post("/api/v1/absences/:id/review", async (request, reply) =>
+    run(reply, request, async () => {
+      const params = z.object({ id: uuid }).parse(request.params);
+      return dependencies.service.review(
+        await actor(request),
+        params.id,
+        key(request),
+        review.parse(request.body),
+      );
+    }),
+  );
+}
+
+async function run(
+  reply: FastifyReply,
+  request: FastifyRequest,
+  operation: () => Promise<unknown>,
+) {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof IdentityError) {
+      return reply.status(error.statusCode).send({
+        error: { code: error.code, message: error.message, requestId: request.id },
+      });
+    }
+    if (error instanceof TimeTrackingError) {
+      const status =
+        error.code === "FORBIDDEN"
+          ? 403
+          : error.code === "NOT_FOUND"
+            ? 404
+            : error.code === "VALIDATION_ERROR"
+              ? 400
+              : error.code === "CONFLICT"
+                ? 409
+                : 500;
+      return reply.status(status).send({
+        error: {
+          code: error.code,
+          message: error.message,
+          ...(error.field ? { field: error.field } : {}),
+          requestId: request.id,
+        },
+      });
+    }
+    if (error instanceof z.ZodError) {
+      return reply.status(400).send({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Ungültige Anfragedaten.",
+          requestId: request.id,
+        },
+      });
+    }
+    request.log.error(error);
+    return reply.status(500).send({
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "Interner Fehler.",
+        requestId: request.id,
+      },
+    });
+  }
+}
+
+function key(request: FastifyRequest) {
+  const value = one(request.headers["idempotency-key"]);
+  if (!value || !uuid.safeParse(value).success) {
+    throw new TimeTrackingError(
+      "VALIDATION_ERROR",
+      "Gültiger Idempotency-Key erforderlich.",
+    );
+  }
+  return value;
+}
+
+function one(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}

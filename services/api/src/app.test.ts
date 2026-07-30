@@ -146,6 +146,16 @@ describe("TeamZeit API foundation", () => {
     expect(response.json()).toMatchObject({ error: { code: "UNAUTHENTICATED" } });
   });
 
+  it("rejects absence requests without a bearer token before tenant validation", async () => {
+    const app = buildApp(testConfig);
+    apps.push(app);
+
+    const response = await app.inject({ method: "GET", url: "/api/v1/absences" });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ error: { code: "UNAUTHENTICATED" } });
+  });
+
   it("rejects current context requests with an invalid bearer token", async () => {
     const app = buildApp(testConfig, {
       createClient: () => fakeClient({ user: null }),
